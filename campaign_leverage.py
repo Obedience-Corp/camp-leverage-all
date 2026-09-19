@@ -8,6 +8,7 @@ from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
+from functools import lru_cache
 import json
 import os
 from pathlib import Path
@@ -74,12 +75,27 @@ def normalize_remote(remote: str) -> str | None:
         if not match:
             return None
         host, path = match.groups()
+        host = canonical_ssh_host(host)
     if not host or not path:
         return None
     path = path.strip("/")
     if path.lower().endswith(".git"):
         path = path[:-4]
     return f"remote:{host.lower()}/{path.lower()}" if path else None
+
+
+@lru_cache(maxsize=128)
+def canonical_ssh_host(host: str) -> str:
+    """Resolve SSH Host aliases without opening a connection."""
+    try:
+        config = command("ssh", "-G", host, allow_failure=True)
+    except ScanError:
+        return host
+    for line in config.splitlines():
+        key, _, value = line.partition(" ")
+        if key.lower() == "hostname" and value.strip():
+            return value.strip()
+    return host
 
 
 @dataclass(frozen=True)
@@ -146,6 +162,23 @@ def project_entries(root: Path) -> list[dict[str, Any]]:
             item["MonorepoRoot"] = entry.get("monorepo_path", "")
         entries.append(item)
     return entries
+
+
+def stale_absent_project(root: Path, item: dict[str, Any]) -> bool:
+    """A configured missing path with no HEAD tree entry has no current code."""
+    path = root / item.get("Path", "")
+    if path.exists():
+        return False
+    owner = root / item.get("MonorepoRoot", "")
+    if not owner.is_dir():
+        return False
+    try:
+        git_root = Path(command("git", "rev-parse", "--show-toplevel", cwd=owner)).resolve()
+        relative = path.resolve().relative_to(git_root)
+        tracked = command("git", "ls-tree", "HEAD", "--", str(relative), cwd=git_root)
+    except (ScanError, ValueError):
+        return False
+    return not tracked
 
 
 def checkout_for_project(root: Path, campaign: str, item: dict[str, Any]) -> Checkout:
@@ -299,6 +332,7 @@ def calculate(campaign_filters: list[str], seed_emails: set[str], *, progress: b
         raise ScanError("no registered campaigns")
 
     errors: list[str] = []
+    warnings: list[str] = []
     checkouts: list[Checkout] = []
     author_configs: list[dict[str, Any]] = []
     for campaign in selected:
@@ -309,7 +343,10 @@ def calculate(campaign_filters: list[str], seed_emails: set[str], *, progress: b
                 try:
                     checkouts.append(checkout_for_project(root, campaign["name"], item))
                 except ScanError as exc:
-                    errors.append(str(exc))
+                    if stale_absent_project(root, item):
+                        warnings.append(f"{campaign['name']}/{item.get('Name')}: absent from current Git tree; stale project entry")
+                    else:
+                        errors.append(str(exc))
         except ScanError as exc:
             errors.append(f"{campaign['name']}: {exc}")
 
@@ -346,6 +383,7 @@ def calculate(campaign_filters: list[str], seed_emails: set[str], *, progress: b
         "summary": summary,
         "repositories": rows,
         "errors": errors,
+        "warnings": warnings,
     }
 
 
@@ -380,6 +418,8 @@ def main() -> int:
             print(f"  {row['repository']}  {row['estimated_person_months']:.1f} PM  [{', '.join(row['campaigns'])}]{flags}")
         for error in report["errors"]:
             print("Skipped: " + error, file=sys.stderr)
+        for warning in report["warnings"]:
+            print("Excluded: " + warning, file=sys.stderr)
         if not report["complete"]:
             print("Incomplete score: some campaigns or repositories could not be measured.", file=sys.stderr)
     return 0 if report["complete"] else 2

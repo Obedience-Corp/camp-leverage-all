@@ -22,6 +22,13 @@ class LeverageTests(unittest.TestCase):
             leverage.normalize_remote("git@github.com:Obedience-Corp/camp.git"),
         )
 
+    def test_ssh_alias_resolves_to_same_repo_as_https(self):
+        with patch.object(leverage, "canonical_ssh_host", return_value="github.com"):
+            self.assertEqual(
+                leverage.normalize_remote("git@github-veronica-agent:Obedience-Corp/camp.git"),
+                leverage.normalize_remote("https://github.com/Obedience-Corp/camp.git"),
+            )
+
     def test_checkout_selection_prefers_direct_and_keeps_membership(self):
         group = [
             self.checkout("remote:github.com/o/repo", "/nested", "A", standalone=False, head_time=9),
