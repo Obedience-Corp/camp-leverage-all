@@ -8,7 +8,7 @@ One command reports the user's cumulative personal leverage over all registered 
 
 - `camp list --format json` supplies registered campaigns. The default includes every registered campaign, including demos and inactive campaigns. `--campaign` narrows the set by exact name or ID.
 - `camp project list --json` supplies each campaign's projects. Where `.campaign/leverage/config.json` has a nonempty `projects` map, only its entries with `include: true` are eligible; the config's explicit path is authoritative. Other projects use Camp discovery. Worktree directories are excluded in either case because they duplicate project checkouts.
-- An email from `--author-email`, or `git config user.email` by default, seeds identity matching. Any identity group in a selected campaign's `authors.json` containing a known email adds all its emails. Expansion repeats until stable. Excluded groups do not contribute. The report lists the resulting emails.
+- An email from `--author-email`, or `git config user.email` by default, seeds identity matching. `--author-name` selects an exact Git author name or Camp author-group key. Any identity group in a selected campaign's `authors.json` containing a known email or explicitly selected group name adds all its emails. Explicit Git names also discover their exact commit emails. Expansion repeats until stable across campaigns, but labels of groups reached transitively never become Git-name selectors. Excluded groups do not contribute. The report lists the resulting emails, explicit names, matched groups, and matched Git identities.
 - No campaign's leverage state is written. `scc` and Git are invoked directly; the script needs no service or Python dependencies.
 
 ## Repository identity and code scope
@@ -30,6 +30,8 @@ personal_estimated_pm = Σ(repo_estimated_pm × author_share)
 actual_pm = max(0.1, (latest selected-author commit - earliest selected-author commit) / 30.44 days)
 full_leverage = personal_estimated_pm / actual_pm
 ```
+
+The same deduplicated repository scopes also report current lines blamed to the selected emails, estimated current code LOC (`scc` code lines × author share), and lifetime textual lines added/deleted from matching commits. Git numstat omits binary line counts. These line measures are kept separate because currently owned lines and historical production answer different questions.
 
 The first and last author commit dates are merged across unique repositories before calculating the denominator. The script never sums campaign scores, per-project leverage ratios, or per-repo elapsed time. It matches Camp's current personal numerator and calendar-span denominator semantics. This is a COCOMO comparison for personal tracking, not a valuation or a measure of hours worked.
 

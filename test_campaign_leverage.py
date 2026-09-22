@@ -50,6 +50,71 @@ class LeverageTests(unittest.TestCase):
             {"one@example.com", "two@example.com", "three@example.com"},
         )
 
+    def test_author_group_name_expands_agent_emails_across_campaigns(self):
+        configs = [
+            {"authors": {"obey-agent": {"emails": ["agent@corp.example"]}}},
+            {"authors": {"automation": {"emails": ["agent@corp.example", "agent@users.noreply.github.com"]}}},
+        ]
+        emails, groups = leverage.expand_author_identity(set(), {"Obey-Agent"}, configs)
+        self.assertEqual(
+            emails,
+            {"agent@corp.example", "agent@users.noreply.github.com"},
+        )
+        self.assertIn("obey-agent", groups)
+        self.assertIn("automation", groups)
+
+    def test_transitive_group_label_does_not_become_a_git_name_selector(self):
+        configs = [{"authors": {
+            "lancekrogers": {"emails": ["me@example.com"]},
+            "lancekrogers-2": {"emails": ["fixture@test"]},
+        }}]
+        emails, groups = leverage.expand_author_identity({"me@example.com"}, set(), configs)
+        pairs = {("lancekrogers", "fixture@test")}
+        self.assertEqual(emails, {"me@example.com"})
+        self.assertEqual(groups, {"lancekrogers"})
+        self.assertEqual(
+            leverage.discover_named_author_emails(emails, set(), pairs),
+            {"me@example.com"},
+        )
+
+    def test_selected_git_name_discovers_all_of_its_emails(self):
+        pairs = {
+            ("obey-agent", "one@example.com"),
+            ("Obey-Agent", "two@example.com"),
+            ("someone else", "other@example.com"),
+        }
+        self.assertEqual(
+            leverage.discover_named_author_emails(set(), {"obey-agent"}, pairs),
+            {"one@example.com", "two@example.com"},
+        )
+
+    def test_explicit_email_adds_to_git_default(self):
+        self.assertEqual(
+            leverage.seed_author_emails(["local@example.com"], "default@example.com"),
+            {"local@example.com", "default@example.com"},
+        )
+
+    def test_history_stats_count_only_selected_author_text_lines(self):
+        output = """@@CAMPAIGN_LEVERAGE@@me@example.com\t2026-01-01T00:00:00+00:00
+
+10\t2\tone.py
+-\t-\timage.png
+@@CAMPAIGN_LEVERAGE@@other@example.com\t2026-01-02T00:00:00+00:00
+
+50\t4\tother.py
+@@CAMPAIGN_LEVERAGE@@me@example.com\t2026-02-01T00:00:00+00:00
+
+7\t1\ttwo.py
+99\t8\tvendor/generated.go
+"""
+        with patch.object(leverage, "command", return_value=output):
+            stats = leverage.author_history_stats(Path("/repo"), Path("/repo"), {"me@example.com"})
+        self.assertEqual(stats["commit_count"], 2)
+        self.assertEqual(stats["lines_added"], 17)
+        self.assertEqual(stats["lines_deleted"], 3)
+        self.assertEqual(stats["first_commit"], "2026-01-01T00:00:00+00:00")
+        self.assertEqual(stats["last_commit"], "2026-02-01T00:00:00+00:00")
+
     def test_aggregate_unions_calendar_span_instead_of_summing_repo_effort(self):
         rows = [
             {"estimated_person_months": 12, "first_commit": "2026-01-01T00:00:00+00:00", "last_commit": "2026-02-01T00:00:00+00:00"},
@@ -78,16 +143,28 @@ class LeverageTests(unittest.TestCase):
 
     def test_score_scales_cocomo_effort_by_exact_email_ownership(self):
         checkout = self.checkout("remote:github.com/o/repo", "/repo", "A")
-        dates = (datetime.fromisoformat("2026-01-01T00:00:00+00:00"), datetime.fromisoformat("2026-02-01T00:00:00+00:00"))
+        history = {
+            "commit_count": 2,
+            "lines_added": 30,
+            "lines_deleted": 5,
+            "first_commit": "2026-01-01T00:00:00+00:00",
+            "last_commit": "2026-02-01T00:00:00+00:00",
+        }
         with (
-            patch.object(leverage, "author_dates", return_value=dates),
-            patch.object(leverage, "json_command", return_value={"estimatedPeople": 4, "estimatedScheduleMonths": 5}),
+            patch.object(leverage, "author_history_stats", return_value=history),
+            patch.object(leverage, "json_command", return_value={
+                "estimatedPeople": 4,
+                "estimatedScheduleMonths": 5,
+                "languageSummary": [{"Code": 80}],
+            }),
             patch.object(leverage, "blame_counts", return_value={"me@example.com": 25, "other@example.com": 75}),
             patch.object(leverage, "command", return_value=""),
         ):
             row = leverage.score_checkout(checkout, {"me@example.com"})
         self.assertAlmostEqual(row["estimated_person_months"], 5)
         self.assertAlmostEqual(row["author_share"], .25)
+        self.assertEqual(row["estimated_owned_code_lines"], 20)
+        self.assertEqual(row["lines_added"], 30)
 
 
 if __name__ == "__main__":

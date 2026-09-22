@@ -122,20 +122,85 @@ def select_checkouts(checkouts: list[Checkout]) -> list[tuple[Checkout, list[Che
     return result
 
 
-def expand_author_emails(seeds: set[str], author_configs: list[dict[str, Any]]) -> set[str]:
-    emails = {email.strip().lower() for email in seeds if email.strip()}
+def normalize_author_name(name: str) -> str:
+    return " ".join(name.strip().lower().split())
+
+
+def expand_author_identity(
+    seed_emails: set[str],
+    seed_names: set[str],
+    author_configs: list[dict[str, Any]],
+) -> tuple[set[str], set[str]]:
+    """Expand explicit emails and author/group names through Camp identity groups."""
+    emails = {email.strip().lower() for email in seed_emails if email.strip()}
+    selectors = {normalize_author_name(name) for name in seed_names if name.strip()}
+    matched_groups: set[str] = set()
     changed = True
     while changed:
         changed = False
         for cfg in author_configs:
-            for group in cfg.get("authors", {}).values():
+            for key, group in cfg.get("authors", {}).items():
                 if group.get("exclude"):
                     continue
-                members = {str(e).strip().lower() for e in group.get("emails", [])}
-                if members & emails and not members <= emails:
-                    emails.update(members)
-                    changed = True
+                group_names = {
+                    normalize_author_name(str(key)),
+                    normalize_author_name(str(group.get("name", ""))),
+                } - {""}
+                members = {str(e).strip().lower() for e in group.get("emails", []) if str(e).strip()}
+                if not (members & emails or group_names & selectors):
+                    continue
+                before = len(emails)
+                emails.update(members)
+                matched_groups.update(group_names)
+                changed = changed or len(emails) != before
+    return emails, matched_groups
+
+
+def expand_author_emails(seeds: set[str], author_configs: list[dict[str, Any]]) -> set[str]:
+    """Backward-compatible email-only identity expansion."""
+    emails, _ = expand_author_identity(seeds, set(), author_configs)
     return emails
+
+
+def git_author_pairs(
+    git_roots: set[Path], emails: set[str], names: set[str],
+) -> set[tuple[str, str]]:
+    selectors = sorted(emails | names)
+    if not selectors:
+        return set()
+    author_pattern = "(?:" + "|".join(re.escape(selector) for selector in selectors) + ")"
+    pairs: set[tuple[str, str]] = set()
+    for git_root in sorted(git_roots):
+        raw = command(
+            "git", "log", "--all", "--perl-regexp", "--regexp-ignore-case",
+            f"--author={author_pattern}", "--format=%an%x09%ae", cwd=git_root,
+        )
+        for line in raw.splitlines():
+            name, separator, email = line.partition("\t")
+            normalized_email = email.strip().lower()
+            if separator and normalized_email and (
+                normalized_email in emails or normalize_author_name(name) in names
+            ):
+                pairs.add((name.strip(), normalized_email))
+    return pairs
+
+
+def discover_named_author_emails(
+    emails: set[str], names: set[str], pairs: set[tuple[str, str]],
+) -> set[str]:
+    """Add emails used by exact selected Git author names."""
+    discovered = set(emails)
+    for name, email in pairs:
+        if normalize_author_name(name) in names:
+            discovered.add(email)
+    return discovered
+
+
+def seed_author_emails(cli_emails: list[str], default_email: str) -> set[str]:
+    seeds = {email for email in cli_emails if email.strip()}
+    if default_email.strip():
+        seeds.add(default_email)
+    return seeds
 
 
 def project_entries(root: Path) -> list[dict[str, Any]]:
@@ -219,17 +284,51 @@ def checkout_for_project(root: Path, campaign: str, item: dict[str, Any]) -> Che
     )
 
 
-def author_dates(git_root: Path, emails: set[str]) -> tuple[datetime, datetime] | None:
-    raw = command("git", "log", "--all", "--format=%ae%x09%cI", cwd=git_root)
-    dates = []
+def author_history_stats(git_root: Path, scan_path: Path, emails: set[str]) -> dict[str, Any]:
+    """Count selected-author commits and textual lines added/deleted in this scope."""
+    args = [
+        "git", "log", "--all", "--find-renames", "--numstat",
+        "--format=@@CAMPAIGN_LEVERAGE@@%ae%x09%cI",
+    ]
+    try:
+        relative = scan_path.resolve().relative_to(git_root.resolve())
+    except ValueError as exc:
+        raise ScanError(f"{scan_path}: outside Git root {git_root}") from exc
+    if relative != Path("."):
+        args.extend(("--", str(relative)))
+    raw = command(*args, cwd=git_root)
+    selected = False
+    dates: list[datetime] = []
+    added = deleted = commits = 0
+    marker = "@@CAMPAIGN_LEVERAGE@@"
     for line in raw.splitlines():
-        email, sep, stamp = line.partition("\t")
-        if sep and email.lower() in emails:
-            try:
-                dates.append(datetime.fromisoformat(stamp))
-            except ValueError as exc:
-                raise ScanError(f"{git_root}: invalid Git date {stamp!r}") from exc
-    return (min(dates), max(dates)) if dates else None
+        if line.startswith(marker):
+            identity = line[len(marker):]
+            email, separator, stamp = identity.partition("\t")
+            selected = bool(separator and email.strip().lower() in emails)
+            if selected:
+                try:
+                    dates.append(datetime.fromisoformat(stamp))
+                except ValueError as exc:
+                    raise ScanError(f"{git_root}: invalid Git date {stamp!r}") from exc
+                commits += 1
+            continue
+        if not selected or not line:
+            continue
+        added_text, separator, remainder = line.partition("\t")
+        deleted_text, separator2, file_name = remainder.partition("\t")
+        if any(part in EXCLUDE_DIRS for part in Path(file_name).parts):
+            continue
+        if separator and separator2 and added_text.isdigit() and deleted_text.isdigit():
+            added += int(added_text)
+            deleted += int(deleted_text)
+    return {
+        "commit_count": commits,
+        "lines_added": added,
+        "lines_deleted": deleted,
+        "first_commit": min(dates).isoformat() if dates else None,
+        "last_commit": max(dates).isoformat() if dates else None,
+    }
 
 
 def blame_counts(scan_path: Path) -> Counter[str]:
@@ -274,8 +373,8 @@ def blame_counts(scan_path: Path) -> Counter[str]:
 
 
 def score_checkout(checkout: Checkout, emails: set[str]) -> dict[str, Any] | None:
-    dates = author_dates(checkout.git_root, emails)
-    if dates is None:
+    history = author_history_stats(checkout.git_root, checkout.scan_path, emails)
+    if not history["commit_count"]:
         return None
     args = ["scc", "--format", "json2", "--cocomo-project-type", "organic"]
     for dirname in EXCLUDE_DIRS:
@@ -284,6 +383,7 @@ def score_checkout(checkout: Checkout, emails: set[str]) -> dict[str, Any] | Non
     result = json_command(*args)
     people = float(result["estimatedPeople"])
     months = float(result["estimatedScheduleMonths"])
+    code_lines = sum(int(language.get("Code", 0)) for language in result.get("languageSummary", []))
     counts = blame_counts(checkout.scan_path)
     total_lines = sum(counts.values())
     owned_lines = sum(count for email, count in counts.items() if email in emails)
@@ -296,9 +396,10 @@ def score_checkout(checkout: Checkout, emails: set[str]) -> dict[str, Any] | Non
         "unscaled_estimated_person_months": people * months,
         "author_share": share,
         "owned_lines": owned_lines,
+        "estimated_owned_code_lines": round(code_lines * share),
+        "code_lines": code_lines,
         "blamed_lines": total_lines,
-        "first_commit": dates[0].isoformat(),
-        "last_commit": dates[1].isoformat(),
+        **history,
         "dirty": bool(status),
         "weak_identity": checkout.weak_identity,
     }
@@ -317,10 +418,22 @@ def aggregate(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "actual_person_months": actual,
         "first_commit": first.isoformat(),
         "last_commit": last.isoformat(),
+        "commit_count": sum(row.get("commit_count", 0) for row in rows),
+        "lines_added": sum(row.get("lines_added", 0) for row in rows),
+        "lines_deleted": sum(row.get("lines_deleted", 0) for row in rows),
+        "current_owned_lines": sum(row.get("owned_lines", 0) for row in rows),
+        "estimated_current_code_lines": sum(row.get("estimated_owned_code_lines", 0) for row in rows),
+        "current_code_lines": sum(row.get("code_lines", 0) for row in rows),
     }
 
 
-def calculate(campaign_filters: list[str], seed_emails: set[str], *, progress: bool = True) -> dict[str, Any]:
+def calculate(
+    campaign_filters: list[str],
+    seed_emails: set[str],
+    seed_names: set[str] | None = None,
+    *,
+    progress: bool = True,
+) -> dict[str, Any]:
     campaigns = json_command("camp", "list", "--format", "json")
     if not isinstance(campaigns, list):
         raise ScanError("camp list returned a non-list")
@@ -350,10 +463,30 @@ def calculate(campaign_filters: list[str], seed_emails: set[str], *, progress: b
         except ScanError as exc:
             errors.append(f"{campaign['name']}: {exc}")
 
-    emails = expand_author_emails(seed_emails, author_configs)
+    chosen = select_checkouts(checkouts)
+    names = {normalize_author_name(name) for name in (seed_names or set()) if name.strip()}
+    emails, author_groups = expand_author_identity(seed_emails, names, author_configs)
+    git_roots = {checkout.git_root for checkout, _ in chosen}
+    pairs: set[tuple[str, str]] = set()
+    # A selected Git name can reveal an address missing from Camp's author
+    # files; that address can then connect another campaign identity group.
+    while True:
+        try:
+            pairs.update(git_author_pairs(git_roots, emails, names))
+        except ScanError as exc:
+            errors.append(f"author identity discovery: {exc}")
+            break
+        expanded = discover_named_author_emails(emails, names, pairs)
+        expanded, expanded_groups = expand_author_identity(expanded, names, author_configs)
+        if expanded == emails and expanded_groups == author_groups:
+            break
+        emails, author_groups = expanded, expanded_groups
     if not emails:
         raise ScanError("no author email; use --author-email or configure git user.email")
-    chosen = select_checkouts(checkouts)
+    matched_pairs = sorted(
+        ({"name": name, "email": email} for name, email in pairs if email in emails),
+        key=lambda pair: (pair["name"].lower(), pair["email"]),
+    )
     rows = []
     for index, (checkout, group) in enumerate(chosen, 1):
         if progress:
@@ -380,6 +513,9 @@ def calculate(campaign_filters: list[str], seed_emails: set[str], *, progress: b
         "unique_repository_count": len(rows),
         "discovered_repository_count": len(chosen),
         "author_emails": sorted(emails),
+        "author_names": sorted(names),
+        "author_groups": sorted(author_groups),
+        "matched_git_identities": matched_pairs,
         "summary": summary,
         "repositories": rows,
         "errors": errors,
@@ -391,15 +527,17 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--campaign", action="append", default=[], help="exact campaign name or ID (repeatable)")
     parser.add_argument("--author-email", action="append", default=[], help="author email (repeatable)")
+    parser.add_argument(
+        "--author-name", action="append", default=[],
+        help="exact Git author name or Camp author-group name (repeatable)",
+    )
     parser.add_argument("--json", action="store_true", help="machine-readable report")
     args = parser.parse_args()
-    seeds = set(args.author_email)
+    seed_names = set(args.author_name)
     try:
-        if not seeds:
-            default = command("git", "config", "user.email", allow_failure=True)
-            if default:
-                seeds.add(default)
-        report = calculate(args.campaign, seeds, progress=not args.json)
+        default = command("git", "config", "user.email", allow_failure=True)
+        seeds = seed_author_emails(args.author_email, default)
+        report = calculate(args.campaign, seeds, seed_names, progress=not args.json)
     except ScanError as exc:
         print(f"campaign-leverage: {exc}", file=sys.stderr)
         return 2
@@ -411,8 +549,15 @@ def main() -> int:
             print(f"Full leverage: {summary['full_leverage']:.1f}x")
             print(f"Estimated effort: {summary['estimated_person_months']:.1f} person-months")
             print(f"Actual effort: {summary['actual_person_months']:.1f} person-months")
+            print(f"Current lines owned: {summary['current_owned_lines']:,}")
+            print(f"Estimated current code LOC: {summary['estimated_current_code_lines']:,}")
+            print(f"Lifetime lines added: {summary['lines_added']:,}")
+            print(f"Lifetime lines deleted: {summary['lines_deleted']:,}")
+            print(f"Matching commits: {summary['commit_count']:,}")
         print(f"Campaigns: {report['campaign_count']}  Unique scored repos: {report['unique_repository_count']}")
         print("Author emails: " + ", ".join(report["author_emails"]))
+        print("Explicit author names/groups: " + ", ".join(report["author_names"]))
+        print("Matched Camp author groups: " + ", ".join(report["author_groups"]))
         for row in report["repositories"]:
             flags = (" dirty" if row["dirty"] else "") + (" local-identity" if row["weak_identity"] else "")
             print(f"  {row['repository']}  {row['estimated_person_months']:.1f} PM  [{', '.join(row['campaigns'])}]{flags}")
