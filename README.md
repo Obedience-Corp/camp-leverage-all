@@ -1,22 +1,24 @@
-# Campaign Leverage
+<h1 align="center">Campaign Leverage</h1>
 
-Campaign Leverage calculates one personal leverage score across every Camp workspace you use. It discovers registered campaigns and projects, identifies all of your configured Git identities, and counts each repository once even when the same repo appears in several campaigns or worktrees.
+<p align="center"><strong>Your engineering output across every Camp, counted once.</strong></p>
 
-```console
-$ leverage
-Scoring 1/12: api
-Scoring 2/12: website
-...
-Full leverage: 18.4x
-Estimated effort: 76.2 person-months
-Actual effort: 4.1 person-months
-Current lines owned: 42,608
-Estimated current code LOC: 31,954
-Lifetime lines added: 182,147
-Lifetime lines deleted: 61,398
-Matching commits: 1,284
-Campaigns: 4  Unique scored repos: 12
-```
+<p align="center">
+  <a href="https://github.com/Obedience-Corp/campaign-leverage/actions/workflows/ci.yml"><img src="https://github.com/Obedience-Corp/campaign-leverage/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+  <img src="https://img.shields.io/badge/python-3.11%2B-F2721C" alt="Python 3.11 or newer">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-F2721C" alt="Apache 2.0 license"></a>
+</p>
+
+<p align="center">
+  <a href="https://gist.github.com/lancekrogers/009de71f070f918f8422edf546d1beb8"><img src="https://gist.githubusercontent.com/lancekrogers/009de71f070f918f8422edf546d1beb8/raw/campaign-leverage-pr-3-terminal.gif" width="960" alt="Campaign Leverage terminal report showing leverage, contribution, scope, repositories, and identities"></a>
+</p>
+
+<p align="center"><em>Recorded from the real CLI with two sanitized campaigns; the shared repository is counted once.</em></p>
+
+Campaign Leverage discovers registered campaigns and projects, joins your configured Git identities, and calculates one personal leverage score without counting the same repository or worktree twice.
+
+| Deduplicated | Identity-aware | Auditable |
+| --- | --- | --- |
+| One remote contributes once across every campaign and checkout. | Personal, work, bot, and agent emails can resolve into one author set. | Every score includes its repositories, commit span, ownership, and failures. |
 
 The exact result depends on your repositories and author identities. Campaign Leverage is read-only: it does not modify Git history, Camp configuration, or project files.
 
@@ -109,6 +111,8 @@ Tune parallel Git blame work for a large machine or constrained environment:
 leverage --jobs 4
 ```
 
+Color is automatic in a terminal and respects [`NO_COLOR`](https://no-color.org/). Use `--color always` when recording output or `--color never` for plain text.
+
 Run `leverage --help` for every option.
 
 ## Output and exit status
@@ -134,6 +138,7 @@ python3 -m compileall -q campaign_leverage.py
 uv build
 docker build -f tests/integration/Dockerfile -t campaign-leverage-integration .
 docker run --rm --network none campaign-leverage-integration
+docker run --rm --network none --entrypoint python campaign-leverage-integration /app/tests/terminal/render_pty.py
 ```
 
 The project has no runtime Python dependencies. GitHub Actions checks the supported Python versions on macOS and Linux, then runs the end-to-end deduplication fixture in an isolated container. See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution and sign-off requirements.

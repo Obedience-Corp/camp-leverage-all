@@ -1,4 +1,5 @@
 import argparse
+import io
 import subprocess
 import tomllib
 import unittest
@@ -13,6 +14,40 @@ class LeverageTests(unittest.TestCase):
         return leverage.Checkout(
             key, Path(path), Path(path), campaign, path, standalone, head_time, False
         )
+
+    def report(self):
+        return {
+            "complete": True,
+            "campaign_count": 2,
+            "unique_repository_count": 1,
+            "discovered_repository_count": 1,
+            "author_emails": ["developer@example.com"],
+            "author_names": ["automation-agent"],
+            "author_groups": ["automation-agent", "developer"],
+            "matched_git_identities": [],
+            "summary": {
+                "full_leverage": 12.5,
+                "estimated_person_months": 50.0,
+                "actual_person_months": 4.0,
+                "first_commit": "2026-01-01T00:00:00+00:00",
+                "last_commit": "2026-05-01T00:00:00+00:00",
+                "commit_count": 42,
+                "lines_added": 12_345,
+                "lines_deleted": 2_345,
+                "current_owned_lines": 8_765,
+                "estimated_current_code_lines": 7_654,
+                "current_code_lines": 10_000,
+            },
+            "repositories": [{
+                "repository": "remote:github.com/example/shared-platform",
+                "estimated_person_months": 50.0,
+                "campaigns": ["Client Work", "Studio"],
+                "dirty": False,
+                "weak_identity": False,
+            }],
+            "errors": [],
+            "warnings": [],
+        }
 
     def test_remote_identity_deduplicates_ssh_and_https(self):
         self.assertEqual(
@@ -212,6 +247,48 @@ class LeverageTests(unittest.TestCase):
     def test_package_and_cli_versions_match(self):
         metadata = tomllib.loads(Path(__file__).with_name("pyproject.toml").read_text())
         self.assertEqual(metadata["project"]["version"], leverage.VERSION)
+
+    def test_wide_terminal_report_has_hierarchy_and_repository_table(self):
+        output = io.StringIO()
+        errors = io.StringIO()
+        leverage.render_text_report(
+            self.report(), stream=output, error_stream=errors, color="never", width=96,
+        )
+        rendered = output.getvalue()
+        self.assertIn("CAMPAIGN LEVERAGE", rendered)
+        self.assertIn("12.5×  full leverage", rendered)
+        self.assertIn("CONTRIBUTION", rendered)
+        self.assertIn("REPOSITORY", rendered)
+        self.assertIn("github.com/example/shared-platform", rendered)
+        self.assertNotIn("remote:", rendered)
+        self.assertNotIn("\033[", rendered)
+        self.assertEqual(errors.getvalue(), "")
+        self.assertLessEqual(max(map(len, rendered.splitlines())), 96)
+
+    def test_narrow_terminal_report_stacks_repository_details(self):
+        output = io.StringIO()
+        leverage.render_text_report(
+            self.report(), stream=output, error_stream=io.StringIO(), color="never", width=58,
+        )
+        rendered = output.getvalue()
+        self.assertNotIn("EFFORT", rendered)
+        self.assertIn("github.com/example/shared-platform\n    50.0 PM · Client Work, Studio", rendered)
+        self.assertLessEqual(max(map(len, rendered.splitlines())), 58)
+
+    def test_forced_color_uses_brand_palette(self):
+        output = io.StringIO()
+        leverage.render_text_report(
+            self.report(), stream=output, error_stream=io.StringIO(), color="always", width=96,
+        )
+        self.assertIn("\033[38;2;242;114;28m", output.getvalue())
+
+    def test_display_groups_collapse_key_and_name_variants(self):
+        self.assertEqual(
+            leverage.collapsed_labels([
+                "demo agent", "demo-agent", "example developer", "example-developer",
+            ]),
+            ["demo-agent", "example-developer"],
+        )
 
 
 if __name__ == "__main__":

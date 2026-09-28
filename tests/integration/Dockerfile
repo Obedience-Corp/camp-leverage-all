@@ -13,9 +13,11 @@ COPY --from=scc-build /out/scc /usr/local/bin/scc
 
 WORKDIR /app
 COPY LICENSE NOTICE README.md campaign_leverage.py pyproject.toml ./
-RUN python -m pip install --no-cache-dir --disable-pip-version-check .
+RUN python -m pip install --no-cache-dir --disable-pip-version-check . pyte==0.8.2
 
 COPY tests/integration/run.sh /usr/local/bin/campaign-leverage-integration
+COPY scripts/demo-fixture.sh /app/scripts/demo-fixture.sh
+COPY tests/terminal/render_pty.py /app/tests/terminal/render_pty.py
 RUN chmod +x /usr/local/bin/campaign-leverage-integration
 
 ENTRYPOINT ["campaign-leverage-integration"]
