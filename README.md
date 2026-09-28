@@ -8,7 +8,11 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-F2721C" alt="Apache 2.0 license"></a>
 </p>
 
-<!-- VHS_DEMO -->
+<p align="center">
+  <a href="https://gist.github.com/lancekrogers/009de71f070f918f8422edf546d1beb8"><img src="https://gist.githubusercontent.com/lancekrogers/009de71f070f918f8422edf546d1beb8/raw/campaign-leverage-pr-3-terminal.gif" width="960" alt="Campaign Leverage terminal report showing leverage, contribution, scope, repositories, and identities"></a>
+</p>
+
+<p align="center"><em>Recorded from the real CLI with two sanitized campaigns; the shared repository is counted once.</em></p>
 
 Campaign Leverage discovers registered campaigns and projects, joins your configured Git identities, and calculates one personal leverage score without counting the same repository or worktree twice.
 
