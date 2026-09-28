@@ -1,5 +1,7 @@
+import argparse
+import subprocess
+import tomllib
 import unittest
-from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -52,26 +54,26 @@ class LeverageTests(unittest.TestCase):
 
     def test_author_group_name_expands_agent_emails_across_campaigns(self):
         configs = [
-            {"authors": {"obey-agent": {"emails": ["agent@corp.example"]}}},
+            {"authors": {"automation-agent": {"emails": ["agent@corp.example"]}}},
             {"authors": {"automation": {"emails": ["agent@corp.example", "agent@users.noreply.github.com"]}}},
         ]
-        emails, groups = leverage.expand_author_identity(set(), {"Obey-Agent"}, configs)
+        emails, groups = leverage.expand_author_identity(set(), {"Automation-Agent"}, configs)
         self.assertEqual(
             emails,
             {"agent@corp.example", "agent@users.noreply.github.com"},
         )
-        self.assertIn("obey-agent", groups)
+        self.assertIn("automation-agent", groups)
         self.assertIn("automation", groups)
 
     def test_transitive_group_label_does_not_become_a_git_name_selector(self):
         configs = [{"authors": {
-            "lancekrogers": {"emails": ["me@example.com"]},
-            "lancekrogers-2": {"emails": ["fixture@test"]},
+            "primary-developer": {"emails": ["me@example.com"]},
+            "primary-developer-fixture": {"emails": ["fixture@test"]},
         }}]
         emails, groups = leverage.expand_author_identity({"me@example.com"}, set(), configs)
-        pairs = {("lancekrogers", "fixture@test")}
+        pairs = {("primary-developer", "fixture@test")}
         self.assertEqual(emails, {"me@example.com"})
-        self.assertEqual(groups, {"lancekrogers"})
+        self.assertEqual(groups, {"primary-developer"})
         self.assertEqual(
             leverage.discover_named_author_emails(emails, set(), pairs),
             {"me@example.com"},
@@ -79,14 +81,29 @@ class LeverageTests(unittest.TestCase):
 
     def test_selected_git_name_discovers_all_of_its_emails(self):
         pairs = {
-            ("obey-agent", "one@example.com"),
-            ("Obey-Agent", "two@example.com"),
+            ("automation-agent", "one@example.com"),
+            ("Automation-Agent", "two@example.com"),
             ("someone else", "other@example.com"),
         }
         self.assertEqual(
-            leverage.discover_named_author_emails(set(), {"obey-agent"}, pairs),
+            leverage.discover_named_author_emails(set(), {"automation-agent"}, pairs),
             {"one@example.com", "two@example.com"},
         )
+
+    def test_author_discovery_falls_back_when_git_lacks_pcre(self):
+        with patch.object(
+            leverage,
+            "command",
+            side_effect=[
+                leverage.ScanError("Git was built without support for Perl-compatible regexes"),
+                "Example Developer\tdeveloper@example.com",
+            ],
+        ) as run:
+            pairs = leverage.git_author_pairs(
+                {Path("/repo")}, {"developer@example.com"}, set(),
+            )
+        self.assertEqual(pairs, {("Example Developer", "developer@example.com")})
+        self.assertEqual(run.call_count, 2)
 
     def test_explicit_email_adds_to_git_default(self):
         self.assertEqual(
@@ -165,6 +182,36 @@ class LeverageTests(unittest.TestCase):
         self.assertAlmostEqual(row["author_share"], .25)
         self.assertEqual(row["estimated_owned_code_lines"], 20)
         self.assertEqual(row["lines_added"], 30)
+
+    def test_positive_int_rejects_zero_workers(self):
+        self.assertEqual(leverage.positive_int("3"), 3)
+        with self.assertRaisesRegex(argparse.ArgumentTypeError, "at least 1"):
+            leverage.positive_int("0")
+
+    def test_dependency_check_reports_every_missing_command(self):
+        with patch.object(leverage.shutil, "which", side_effect=lambda name: None if name != "git" else "/usr/bin/git"):
+            self.assertEqual(leverage.missing_commands(), ["camp", "scc"])
+
+    def test_command_timeout_is_a_scan_error(self):
+        with patch.object(
+            leverage.subprocess,
+            "run",
+            side_effect=subprocess.TimeoutExpired(cmd=("git", "status"), timeout=1),
+        ), self.assertRaisesRegex(leverage.ScanError, "git timed out"):
+            leverage.command("git", "status")
+
+    def test_scc_minimum_version_is_enforced(self):
+        with (
+            patch.object(leverage, "command", return_value="scc version 3.6.0"),
+            self.assertRaisesRegex(leverage.ScanError, "3.7 or newer"),
+        ):
+            leverage.validate_scc_version()
+        with patch.object(leverage, "command", return_value="scc version 4.0.1"):
+            leverage.validate_scc_version()
+
+    def test_package_and_cli_versions_match(self):
+        metadata = tomllib.loads(Path(__file__).with_name("pyproject.toml").read_text())
+        self.assertEqual(metadata["project"]["version"], leverage.VERSION)
 
 
 if __name__ == "__main__":
