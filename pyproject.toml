@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "campaign-leverage"
+version = "0.1.0"
+description = "Calculate personal leverage across Camp campaigns without double-counting repositories"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+authors = [
+  { name = "Obedience Corp" },
+]
+keywords = ["camp", "cocomo", "developer-tools", "git", "productivity"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Operating System :: MacOS",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Software Development :: Version Control :: Git",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+  "build>=1.2",
+  "ruff>=0.12",
+]
+
+[project.scripts]
+leverage = "campaign_leverage:main"
+campaign-leverage = "campaign_leverage:main"
+
+[project.urls]
+Homepage = "https://github.com/Obedience-Corp/campaign-leverage"
+Issues = "https://github.com/Obedience-Corp/campaign-leverage/issues"
+Repository = "https://github.com/Obedience-Corp/campaign-leverage"
+
+[tool.setuptools]
+py-modules = ["campaign_leverage"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

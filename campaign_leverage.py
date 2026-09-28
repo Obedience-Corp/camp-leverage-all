@@ -4,20 +4,20 @@
 from __future__ import annotations
 
 import argparse
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
 from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
 from functools import lru_cache
-import json
-import os
 from pathlib import Path
-import re
-import subprocess
-import sys
 from typing import Any
 from urllib.parse import urlsplit
-
 
 EXCLUDE_DIRS = (
     "node_modules", "vendor", ".venv", "venv", "dist", "build", "target",
@@ -28,6 +28,11 @@ EXCLUDE_DIRS = (
 MIN_AUTHOR_MONTHS = 0.1
 SECONDS_PER_MONTH = 30.44 * 24 * 60 * 60
 WORKTREE_DIRS = {"worktrees", ".worktrees", ".camp-worktrees"}
+REQUIRED_COMMANDS = ("camp", "git", "scc")
+VERSION = "0.1.0"
+MINIMUM_SCC_VERSION = (3, 7)
+DEFAULT_JOBS = max(1, min(8, os.cpu_count() or 1))
+COMMAND_TIMEOUT_SECONDS = 15 * 60
 
 
 class ScanError(Exception):
@@ -36,7 +41,16 @@ class ScanError(Exception):
 
 def command(*args: str, cwd: Path | None = None, allow_failure: bool = False) -> str:
     try:
-        result = subprocess.run(args, cwd=cwd, capture_output=True, text=True, check=False)
+        result = subprocess.run(
+            args,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=COMMAND_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise ScanError(f"{args[0]} timed out after {COMMAND_TIMEOUT_SECONDS} seconds") from exc
     except OSError as exc:
         raise ScanError(f"{args[0]}: {exc}") from exc
     if result.returncode and not allow_failure:
@@ -117,7 +131,7 @@ def select_checkouts(checkouts: list[Checkout]) -> list[tuple[Checkout, list[Che
     result = []
     for key in sorted(grouped):
         group = grouped[key]
-        chosen = sorted(group, key=lambda c: (not c.standalone, -c.head_time, str(c.scan_path)))[0]
+        chosen = min(group, key=lambda c: (not c.standalone, -c.head_time, str(c.scan_path)))
         result.append((chosen, group))
     return result
 
@@ -171,10 +185,15 @@ def git_author_pairs(
     author_pattern = "(?:" + "|".join(re.escape(selector) for selector in selectors) + ")"
     pairs: set[tuple[str, str]] = set()
     for git_root in sorted(git_roots):
-        raw = command(
-            "git", "log", "--all", "--perl-regexp", "--regexp-ignore-case",
-            f"--author={author_pattern}", "--format=%an%x09%ae", cwd=git_root,
-        )
+        try:
+            raw = command(
+                "git", "log", "--all", "--perl-regexp", "--regexp-ignore-case",
+                f"--author={author_pattern}", "--format=%an%x09%ae", cwd=git_root,
+            )
+        except ScanError:
+            # Some Git builds omit PCRE. Preserve correctness with a slower
+            # full-author scan and the same exact matching below.
+            raw = command("git", "log", "--all", "--format=%an%x09%ae", cwd=git_root)
         for line in raw.splitlines():
             name, separator, email = line.partition("\t")
             normalized_email = email.strip().lower()
@@ -331,10 +350,19 @@ def author_history_stats(git_root: Path, scan_path: Path, emails: set[str]) -> d
     }
 
 
-def blame_counts(scan_path: Path) -> Counter[str]:
-    raw = subprocess.run(
-        ("git", "ls-files", "-z"), cwd=scan_path, capture_output=True, check=False,
-    )
+def blame_counts(scan_path: Path, jobs: int = DEFAULT_JOBS) -> Counter[str]:
+    try:
+        raw = subprocess.run(
+            ("git", "ls-files", "-z"),
+            cwd=scan_path,
+            capture_output=True,
+            check=False,
+            timeout=COMMAND_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise ScanError(f"{scan_path}: git ls-files timed out") from exc
+    except OSError as exc:
+        raise ScanError(f"{scan_path}: git ls-files: {exc}") from exc
     if raw.returncode:
         raise ScanError(f"{scan_path}: git ls-files: {raw.stderr.decode(errors='replace').strip()}")
     files = []
@@ -350,10 +378,18 @@ def blame_counts(scan_path: Path) -> Counter[str]:
         files.append(file)
 
     def blame_one(file: str) -> Counter[str]:
-        result = subprocess.run(
-            ("git", "blame", "--line-porcelain", "--", file), cwd=scan_path,
-            capture_output=True, check=False,
-        )
+        try:
+            result = subprocess.run(
+                ("git", "blame", "--line-porcelain", "--", file),
+                cwd=scan_path,
+                capture_output=True,
+                check=False,
+                timeout=COMMAND_TIMEOUT_SECONDS,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise ScanError(f"{scan_path / file}: git blame timed out") from exc
+        except OSError as exc:
+            raise ScanError(f"{scan_path / file}: git blame: {exc}") from exc
         if result.returncode:
             raise ScanError(f"{scan_path / file}: git blame: {result.stderr.decode(errors='replace').strip()}")
         file_counts: Counter[str] = Counter()
@@ -366,13 +402,17 @@ def blame_counts(scan_path: Path) -> Counter[str]:
         return file_counts
 
     counts: Counter[str] = Counter()
-    with ThreadPoolExecutor(max_workers=8) as pool:
+    with ThreadPoolExecutor(max_workers=jobs) as pool:
         for file_counts in pool.map(blame_one, files):
             counts.update(file_counts)
     return counts
 
 
-def score_checkout(checkout: Checkout, emails: set[str]) -> dict[str, Any] | None:
+def score_checkout(
+    checkout: Checkout,
+    emails: set[str],
+    jobs: int = DEFAULT_JOBS,
+) -> dict[str, Any] | None:
     history = author_history_stats(checkout.git_root, checkout.scan_path, emails)
     if not history["commit_count"]:
         return None
@@ -384,7 +424,7 @@ def score_checkout(checkout: Checkout, emails: set[str]) -> dict[str, Any] | Non
     people = float(result["estimatedPeople"])
     months = float(result["estimatedScheduleMonths"])
     code_lines = sum(int(language.get("Code", 0)) for language in result.get("languageSummary", []))
-    counts = blame_counts(checkout.scan_path)
+    counts = blame_counts(checkout.scan_path, jobs)
     total_lines = sum(counts.values())
     owned_lines = sum(count for email, count in counts.items() if email in emails)
     share = owned_lines / total_lines if total_lines else 0.0
@@ -433,6 +473,7 @@ def calculate(
     seed_names: set[str] | None = None,
     *,
     progress: bool = True,
+    jobs: int = DEFAULT_JOBS,
 ) -> dict[str, Any]:
     campaigns = json_command("camp", "list", "--format", "json")
     if not isinstance(campaigns, list):
@@ -492,7 +533,7 @@ def calculate(
         if progress:
             print(f"Scoring {index}/{len(chosen)}: {checkout.project}", file=sys.stderr)
         try:
-            scored = score_checkout(checkout, emails)
+            scored = score_checkout(checkout, emails, jobs)
         except (ScanError, KeyError, ValueError, TypeError) as exc:
             errors.append(f"{checkout.key}: {exc}")
             continue
@@ -523,7 +564,29 @@ def calculate(
     }
 
 
-def main() -> int:
+def positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 1:
+        raise argparse.ArgumentTypeError("must be at least 1")
+    return parsed
+
+
+def missing_commands() -> list[str]:
+    return [name for name in REQUIRED_COMMANDS if shutil.which(name) is None]
+
+
+def validate_scc_version() -> None:
+    raw = command("scc", "--version")
+    match = re.search(r"\b(\d+)\.(\d+)(?:\.\d+)?\b", raw)
+    if not match:
+        raise ScanError(f"could not parse scc version from {raw!r}")
+    version = tuple(int(part) for part in match.groups())
+    if version < MINIMUM_SCC_VERSION:
+        minimum = ".".join(str(part) for part in MINIMUM_SCC_VERSION)
+        raise ScanError(f"scc {minimum} or newer is required; found {raw}")
+
+
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--campaign", action="append", default=[], help="exact campaign name or ID (repeatable)")
     parser.add_argument("--author-email", action="append", default=[], help="author email (repeatable)")
@@ -532,14 +595,34 @@ def main() -> int:
         help="exact Git author name or Camp author-group name (repeatable)",
     )
     parser.add_argument("--json", action="store_true", help="machine-readable report")
+    parser.add_argument(
+        "--jobs", type=positive_int, default=DEFAULT_JOBS,
+        help=f"parallel Git blame workers (default: {DEFAULT_JOBS})",
+    )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
+    return parser
+
+
+def main() -> int:
+    parser = build_parser()
     args = parser.parse_args()
     seed_names = set(args.author_name)
     try:
+        missing = missing_commands()
+        if missing:
+            raise ScanError(
+                "missing required command" + ("s" if len(missing) > 1 else "")
+                + ": " + ", ".join(missing)
+                + "; see the installation prerequisites in README.md"
+            )
+        validate_scc_version()
         default = command("git", "config", "user.email", allow_failure=True)
         seeds = seed_author_emails(args.author_email, default)
-        report = calculate(args.campaign, seeds, seed_names, progress=not args.json)
+        report = calculate(
+            args.campaign, seeds, seed_names, progress=not args.json, jobs=args.jobs,
+        )
     except ScanError as exc:
-        print(f"campaign-leverage: {exc}", file=sys.stderr)
+        print(f"leverage: {exc}", file=sys.stderr)
         return 2
     if args.json:
         print(json.dumps(report, indent=2))
