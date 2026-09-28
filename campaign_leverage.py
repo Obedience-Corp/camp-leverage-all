@@ -39,6 +39,217 @@ class ScanError(Exception):
     """A campaign or repository could not be fully measured."""
 
 
+@dataclass(frozen=True)
+class TerminalStyle:
+    accent: str = ""
+    bold: str = ""
+    dim: str = ""
+    green: str = ""
+    yellow: str = ""
+    red: str = ""
+    reset: str = ""
+
+
+def terminal_style(mode: str, stream: Any) -> TerminalStyle:
+    enabled = mode == "always" or (
+        mode == "auto"
+        and "NO_COLOR" not in os.environ
+        and bool(getattr(stream, "isatty", lambda: False)())
+    )
+    if not enabled:
+        return TerminalStyle()
+    return TerminalStyle(
+        accent="\033[38;2;242;114;28m",
+        bold="\033[1m",
+        dim="\033[2m",
+        green="\033[38;2;80;250;123m",
+        yellow="\033[38;2;254;188;46m",
+        red="\033[38;2;255;95;87m",
+        reset="\033[0m",
+    )
+
+
+def shortened_repository(key: str) -> str:
+    if key.startswith("remote:"):
+        return key.removeprefix("remote:")
+    if key.startswith("gitdir:"):
+        return "local/" + Path(key.removeprefix("gitdir:")).name
+    return key
+
+
+def clipped(value: str, width: int) -> str:
+    if len(value) <= width:
+        return value
+    return value[: max(1, width - 1)] + "…"
+
+
+def display_date(value: str) -> str:
+    return datetime.fromisoformat(value).strftime("%b %d, %Y")
+
+
+def collapsed_labels(labels: list[str]) -> list[str]:
+    """Collapse display-name/key variants such as ``demo agent``/``demo-agent``."""
+    chosen: dict[str, str] = {}
+    for label in labels:
+        identity = re.sub(r"[^a-z0-9]", "", label.lower())
+        current = chosen.get(identity)
+        if current is None or ("-" in label and "-" not in current):
+            chosen[identity] = label
+    return sorted(chosen.values())
+
+
+def render_text_report(
+    report: dict[str, Any],
+    *,
+    stream: Any = sys.stdout,
+    error_stream: Any = sys.stderr,
+    color: str = "auto",
+    width: int | None = None,
+) -> None:
+    """Render a responsive, evidence-rich terminal report."""
+    style = terminal_style(color, stream)
+    error_style = terminal_style(color, error_stream)
+    columns = width or shutil.get_terminal_size(fallback=(96, 30)).columns
+    columns = max(48, min(columns, 120))
+    content_width = columns - 4
+    rule_width = min(content_width, 88)
+
+    def section(label: str) -> None:
+        print(file=stream)
+        print(f"  {style.bold}{label}{style.reset}", file=stream)
+
+    print(file=stream)
+    print(f"  {style.bold}{style.accent}CAMPAIGN LEVERAGE{style.reset}", file=stream)
+    print(f"  {style.accent}{'━' * rule_width}{style.reset}", file=stream)
+
+    summary = report["summary"]
+    if summary:
+        print(file=stream)
+        print(
+            f"  {style.bold}{style.accent}{summary['full_leverage']:.1f}×{style.reset}"
+            f"  {style.bold}full leverage{style.reset}",
+            file=stream,
+        )
+        print(
+            f"  {summary['estimated_person_months']:.1f} estimated person-months"
+            f"  {style.dim}/{style.reset}  {summary['actual_person_months']:.1f} calendar months",
+            file=stream,
+        )
+
+        section("CONTRIBUTION")
+        if columns >= 78:
+            cell_width = (content_width - 2) // 2
+            metrics = (
+                (summary["current_owned_lines"], "current lines owned"),
+                (summary["lines_added"], "lifetime lines added"),
+                (summary["estimated_current_code_lines"], "estimated code LOC"),
+                (summary["lines_deleted"], "lifetime lines deleted"),
+            )
+            for left, right in ((metrics[0], metrics[1]), (metrics[2], metrics[3])):
+                left_text = f"{left[0]:,}  {left[1]}"
+                right_text = f"{right[0]:,}  {right[1]}"
+                print(
+                    f"  {left_text:<{cell_width}}  {right_text}",
+                    file=stream,
+                )
+        else:
+            for value, label in (
+                (summary["current_owned_lines"], "current lines owned"),
+                (summary["estimated_current_code_lines"], "estimated code LOC"),
+                (summary["lines_added"], "lifetime lines added"),
+                (summary["lines_deleted"], "lifetime lines deleted"),
+            ):
+                print(f"  {value:,}  {label}", file=stream)
+
+        section("SCOPE")
+        campaign_label = "campaign" if report["campaign_count"] == 1 else "campaigns"
+        repo_label = "repo" if report["unique_repository_count"] == 1 else "repos"
+        commit_label = "commit" if summary["commit_count"] == 1 else "commits"
+        print(
+            f"  {report['campaign_count']} {campaign_label}"
+            f"  {style.dim}·{style.reset}  {report['unique_repository_count']} unique {repo_label}"
+            f"  {style.dim}·{style.reset}  {summary['commit_count']:,} matching {commit_label}",
+            file=stream,
+        )
+        print(
+            f"  {display_date(summary['first_commit'])}"
+            f"  {style.dim}→{style.reset}  {display_date(summary['last_commit'])}",
+            file=stream,
+        )
+
+    if report["repositories"]:
+        section("REPOSITORIES")
+        if columns >= 78:
+            effort_width = 9
+            campaign_width = 22
+            status_width = 8
+            repo_width = content_width - effort_width - campaign_width - status_width - 6
+            headings = (
+                f"{'REPOSITORY':<{repo_width}}  {'EFFORT':>{effort_width}}"
+                f"  {'CAMPAIGNS':<{campaign_width}}  {'STATUS':<{status_width}}"
+            )
+            print(f"  {style.dim}{headings}{style.reset}", file=stream)
+            for row in report["repositories"]:
+                statuses = []
+                if row["dirty"]:
+                    statuses.append("dirty")
+                if row["weak_identity"]:
+                    statuses.append("local")
+                status = ",".join(statuses) if statuses else "clean"
+                status_color = style.yellow if statuses else style.green
+                repository = clipped(shortened_repository(row["repository"]), repo_width)
+                campaigns = clipped(", ".join(row["campaigns"]), campaign_width)
+                print(
+                    f"  {style.accent}{repository:<{repo_width}}{style.reset}"
+                    f"  {row['estimated_person_months']:>{effort_width - 3}.1f} PM"
+                    f"  {campaigns:<{campaign_width}}"
+                    f"  {status_color}{status}{style.reset}",
+                    file=stream,
+                )
+        else:
+            for row in report["repositories"]:
+                statuses = []
+                if row["dirty"]:
+                    statuses.append("dirty")
+                if row["weak_identity"]:
+                    statuses.append("local identity")
+                suffix = f" · {', '.join(statuses)}" if statuses else ""
+                repository = clipped(shortened_repository(row["repository"]), content_width)
+                campaigns = ", ".join(row["campaigns"])
+                print(f"  {style.accent}{repository}{style.reset}", file=stream)
+                print(
+                    f"    {row['estimated_person_months']:.1f} PM"
+                    f" {style.dim}·{style.reset} {campaigns}{suffix}",
+                    file=stream,
+                )
+
+    section("IDENTITY")
+    print(f"  {style.dim}Emails{style.reset}  {', '.join(report['author_emails'])}", file=stream)
+    if report["author_names"]:
+        print(
+            f"  {style.dim}Names {style.reset}  {', '.join(report['author_names'])}",
+            file=stream,
+        )
+    if report["author_groups"]:
+        groups = collapsed_labels(report["author_groups"])
+        print(
+            f"  {style.dim}Groups{style.reset}  {', '.join(groups)}",
+            file=stream,
+        )
+    print(file=stream)
+
+    for error in report["errors"]:
+        print(f"{error_style.red}Skipped:{error_style.reset} {error}", file=error_stream)
+    for warning in report["warnings"]:
+        print(f"{error_style.yellow}Excluded:{error_style.reset} {warning}", file=error_stream)
+    if not report["complete"]:
+        print(
+            f"{error_style.red}Incomplete score:{error_style.reset}"
+            " some campaigns or repositories could not be measured.",
+            file=error_stream,
+        )
+
+
 def command(*args: str, cwd: Path | None = None, allow_failure: bool = False) -> str:
     try:
         result = subprocess.run(
@@ -599,6 +810,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--jobs", type=positive_int, default=DEFAULT_JOBS,
         help=f"parallel Git blame workers (default: {DEFAULT_JOBS})",
     )
+    parser.add_argument(
+        "--color",
+        choices=("auto", "always", "never"),
+        default="auto",
+        help="terminal color mode (default: auto)",
+    )
     parser.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
     return parser
 
@@ -627,29 +844,7 @@ def main() -> int:
     if args.json:
         print(json.dumps(report, indent=2))
     else:
-        summary = report["summary"]
-        if summary:
-            print(f"Full leverage: {summary['full_leverage']:.1f}x")
-            print(f"Estimated effort: {summary['estimated_person_months']:.1f} person-months")
-            print(f"Actual effort: {summary['actual_person_months']:.1f} person-months")
-            print(f"Current lines owned: {summary['current_owned_lines']:,}")
-            print(f"Estimated current code LOC: {summary['estimated_current_code_lines']:,}")
-            print(f"Lifetime lines added: {summary['lines_added']:,}")
-            print(f"Lifetime lines deleted: {summary['lines_deleted']:,}")
-            print(f"Matching commits: {summary['commit_count']:,}")
-        print(f"Campaigns: {report['campaign_count']}  Unique scored repos: {report['unique_repository_count']}")
-        print("Author emails: " + ", ".join(report["author_emails"]))
-        print("Explicit author names/groups: " + ", ".join(report["author_names"]))
-        print("Matched Camp author groups: " + ", ".join(report["author_groups"]))
-        for row in report["repositories"]:
-            flags = (" dirty" if row["dirty"] else "") + (" local-identity" if row["weak_identity"] else "")
-            print(f"  {row['repository']}  {row['estimated_person_months']:.1f} PM  [{', '.join(row['campaigns'])}]{flags}")
-        for error in report["errors"]:
-            print("Skipped: " + error, file=sys.stderr)
-        for warning in report["warnings"]:
-            print("Excluded: " + warning, file=sys.stderr)
-        if not report["complete"]:
-            print("Incomplete score: some campaigns or repositories could not be measured.", file=sys.stderr)
+        render_text_report(report, color=args.color)
     return 0 if report["complete"] else 2
 
 

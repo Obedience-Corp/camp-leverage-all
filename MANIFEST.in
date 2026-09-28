@@ -5,3 +5,6 @@ include SPEC.md
 include test_campaign_leverage.py
 recursive-include .github *.yml
 recursive-include tests *.sh Dockerfile
+recursive-include tests *.py
+recursive-include scripts *.sh
+recursive-include docs/demos *.tape

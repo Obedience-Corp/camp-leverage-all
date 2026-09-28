@@ -48,3 +48,7 @@ jobs:
         run: docker build -f tests/integration/Dockerfile -t campaign-leverage-integration .
       - name: Verify cross-campaign repository deduplication
         run: docker run --rm --network none campaign-leverage-integration
+      - name: Verify terminal rendering in a PTY
+        run: >-
+          docker run --rm --network none --entrypoint python
+          campaign-leverage-integration /app/tests/terminal/render_pty.py
