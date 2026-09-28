@@ -1,4 +1,4 @@
-Output "out/vhs/campaign-leverage/raw.gif"
+Output "out/vhs/camp-leverage/raw.gif"
 
 Set Shell "bash"
 Set FontFamily "JetBrainsMono Nerd Font"
@@ -16,7 +16,7 @@ Hide
 Type "source <(./scripts/demo-fixture.sh)"
 Enter
 Sleep 3s
-Type "clear; ./campaign_leverage.py --author-name demo-agent --color always; sleep 10"
+Type "clear; ./camp_leverage.py --author-name demo-agent --color always; sleep 10"
 Enter
 Sleep 5s
 Show

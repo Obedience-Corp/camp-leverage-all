@@ -2,7 +2,7 @@ include CONTRIBUTING.md
 include RELEASING.md
 include SECURITY.md
 include SPEC.md
-include test_campaign_leverage.py
+include test_camp_leverage.py
 recursive-include .github *.yml
 recursive-include tests *.sh Dockerfile
 recursive-include tests *.py

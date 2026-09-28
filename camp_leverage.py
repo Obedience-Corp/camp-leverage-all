@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Personal COCOMO leverage across Camp campaigns, with repository deduplication."""
+"""Personal COCOMO leverage across Camps, with repository deduplication."""
 
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ COMMAND_TIMEOUT_SECONDS = 15 * 60
 
 
 class ScanError(Exception):
-    """A campaign or repository could not be fully measured."""
+    """A Camp or repository could not be fully measured."""
 
 
 @dataclass(frozen=True)
@@ -119,7 +119,7 @@ def render_text_report(
         print(f"  {style.bold}{label}{style.reset}", file=stream)
 
     print(file=stream)
-    print(f"  {style.bold}{style.accent}CAMPAIGN LEVERAGE{style.reset}", file=stream)
+    print(f"  {style.bold}{style.accent}CAMP LEVERAGE{style.reset}", file=stream)
     print(f"  {style.accent}{'━' * rule_width}{style.reset}", file=stream)
 
     summary = report["summary"]
@@ -162,11 +162,11 @@ def render_text_report(
                 print(f"  {value:,}  {label}", file=stream)
 
         section("SCOPE")
-        campaign_label = "campaign" if report["campaign_count"] == 1 else "campaigns"
+        camp_label = "Camp" if report["camp_count"] == 1 else "Camps"
         repo_label = "repo" if report["unique_repository_count"] == 1 else "repos"
         commit_label = "commit" if summary["commit_count"] == 1 else "commits"
         print(
-            f"  {report['campaign_count']} {campaign_label}"
+            f"  {report['camp_count']} {camp_label}"
             f"  {style.dim}·{style.reset}  {report['unique_repository_count']} unique {repo_label}"
             f"  {style.dim}·{style.reset}  {summary['commit_count']:,} matching {commit_label}",
             file=stream,
@@ -181,12 +181,12 @@ def render_text_report(
         section("REPOSITORIES")
         if columns >= 78:
             effort_width = 9
-            campaign_width = 22
+            camp_width = 22
             status_width = 8
-            repo_width = content_width - effort_width - campaign_width - status_width - 6
+            repo_width = content_width - effort_width - camp_width - status_width - 6
             headings = (
                 f"{'REPOSITORY':<{repo_width}}  {'EFFORT':>{effort_width}}"
-                f"  {'CAMPAIGNS':<{campaign_width}}  {'STATUS':<{status_width}}"
+                f"  {'CAMPS':<{camp_width}}  {'STATUS':<{status_width}}"
             )
             print(f"  {style.dim}{headings}{style.reset}", file=stream)
             for row in report["repositories"]:
@@ -198,11 +198,11 @@ def render_text_report(
                 status = ",".join(statuses) if statuses else "clean"
                 status_color = style.yellow if statuses else style.green
                 repository = clipped(shortened_repository(row["repository"]), repo_width)
-                campaigns = clipped(", ".join(row["campaigns"]), campaign_width)
+                camps = clipped(", ".join(row["camps"]), camp_width)
                 print(
                     f"  {style.accent}{repository:<{repo_width}}{style.reset}"
                     f"  {row['estimated_person_months']:>{effort_width - 3}.1f} PM"
-                    f"  {campaigns:<{campaign_width}}"
+                    f"  {camps:<{camp_width}}"
                     f"  {status_color}{status}{style.reset}",
                     file=stream,
                 )
@@ -215,11 +215,11 @@ def render_text_report(
                     statuses.append("local identity")
                 suffix = f" · {', '.join(statuses)}" if statuses else ""
                 repository = clipped(shortened_repository(row["repository"]), content_width)
-                campaigns = ", ".join(row["campaigns"])
+                camps = ", ".join(row["camps"])
                 print(f"  {style.accent}{repository}{style.reset}", file=stream)
                 print(
                     f"    {row['estimated_person_months']:.1f} PM"
-                    f" {style.dim}·{style.reset} {campaigns}{suffix}",
+                    f" {style.dim}·{style.reset} {camps}{suffix}",
                     file=stream,
                 )
 
@@ -245,7 +245,7 @@ def render_text_report(
     if not report["complete"]:
         print(
             f"{error_style.red}Incomplete score:{error_style.reset}"
-            " some campaigns or repositories could not be measured.",
+            " some Camps or repositories could not be measured.",
             file=error_stream,
         )
 
@@ -328,7 +328,7 @@ class Checkout:
     key: str
     scan_path: Path
     git_root: Path
-    campaign: str
+    camp: str
     project: str
     standalone: bool
     head_time: int
@@ -476,39 +476,39 @@ def stale_absent_project(root: Path, item: dict[str, Any]) -> bool:
     return not tracked
 
 
-def checkout_for_project(root: Path, campaign: str, item: dict[str, Any]) -> Checkout:
+def checkout_for_project(root: Path, camp: str, item: dict[str, Any]) -> Checkout:
     relative = item.get("Path", "")
     declared_path = root / relative
     if not relative or not declared_path.absolute().is_relative_to(root.resolve()) or ".." in Path(relative).parts:
-        raise ScanError(f"{campaign}/{item.get('Name')}: invalid project path {relative!r}")
+        raise ScanError(f"{camp}/{item.get('Name')}: invalid project path {relative!r}")
     path = declared_path.resolve()
     if not path.is_relative_to(root.resolve()) and item.get("Source") != "linked":
-        raise ScanError(f"{campaign}/{item.get('Name')}: project escapes campaign without a link")
+        raise ScanError(f"{camp}/{item.get('Name')}: project escapes its Camp without a link")
     if not path.is_dir():
-        raise ScanError(f"{campaign}/{item.get('Name')}: missing directory {path}")
+        raise ScanError(f"{camp}/{item.get('Name')}: missing directory {path}")
     top = command("git", "rev-parse", "--show-toplevel", cwd=path)
     git_root = Path(top).resolve()
     if not path.is_relative_to(git_root):
-        raise ScanError(f"{campaign}/{item.get('Name')}: Git root does not contain project")
+        raise ScanError(f"{camp}/{item.get('Name')}: Git root does not contain project")
 
-    # A campaign-owned folder is a distinct scan scope in its campaign repo.
+    # A Camp-owned folder is a distinct scan scope in its Camp repo.
     # A monorepo child resolves to its parent repo unless it is a real submodule.
     monorepo_root = item.get("MonorepoRoot", "")
-    campaign_owned = git_root == root.resolve() and path != git_root and not monorepo_root
+    camp_owned = git_root == root.resolve() and path != git_root and not monorepo_root
     if item.get("Source") == "submodule" and path != git_root and not monorepo_root:
-        raise ScanError(f"{campaign}/{item.get('Name')}: submodule is not initialized: {path}")
-    scan_path = path if campaign_owned else git_root
+        raise ScanError(f"{camp}/{item.get('Name')}: submodule is not initialized: {path}")
+    scan_path = path if camp_owned else git_root
     origin = command("git", "remote", "get-url", "origin", cwd=git_root, allow_failure=True)
     identity = normalize_remote(origin or item.get("URL", ""))
     weak = identity is None
     if identity is None:
         common = command("git", "rev-parse", "--git-common-dir", cwd=git_root)
         identity = "gitdir:" + str((git_root / common).resolve())
-    if campaign_owned:
+    if camp_owned:
         identity += "::" + str(path.relative_to(git_root))
     head_raw = command("git", "log", "-1", "--format=%ct", cwd=git_root, allow_failure=True)
     return Checkout(
-        key=identity, scan_path=scan_path, git_root=git_root, campaign=campaign,
+        key=identity, scan_path=scan_path, git_root=git_root, camp=camp,
         project=str(item.get("Name", path.name)), standalone=not bool(monorepo_root),
         head_time=int(head_raw) if head_raw.isdigit() else 0, weak_identity=weak,
     )
@@ -518,7 +518,7 @@ def author_history_stats(git_root: Path, scan_path: Path, emails: set[str]) -> d
     """Count selected-author commits and textual lines added/deleted in this scope."""
     args = [
         "git", "log", "--all", "--find-renames", "--numstat",
-        "--format=@@CAMPAIGN_LEVERAGE@@%ae%x09%cI",
+        "--format=@@CAMP_LEVERAGE@@%ae%x09%cI",
     ]
     try:
         relative = scan_path.resolve().relative_to(git_root.resolve())
@@ -530,7 +530,7 @@ def author_history_stats(git_root: Path, scan_path: Path, emails: set[str]) -> d
     selected = False
     dates: list[datetime] = []
     added = deleted = commits = 0
-    marker = "@@CAMPAIGN_LEVERAGE@@"
+    marker = "@@CAMP_LEVERAGE@@"
     for line in raw.splitlines():
         if line.startswith(marker):
             identity = line[len(marker):]
@@ -679,41 +679,41 @@ def aggregate(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def calculate(
-    campaign_filters: list[str],
+    camp_filters: list[str],
     seed_emails: set[str],
     seed_names: set[str] | None = None,
     *,
     progress: bool = True,
     jobs: int = DEFAULT_JOBS,
 ) -> dict[str, Any]:
-    campaigns = json_command("camp", "list", "--format", "json")
-    if not isinstance(campaigns, list):
+    camps = json_command("camp", "list", "--format", "json")
+    if not isinstance(camps, list):
         raise ScanError("camp list returned a non-list")
-    selected = [c for c in campaigns if not campaign_filters or c["name"] in campaign_filters or c["id"] in campaign_filters]
-    missing = set(campaign_filters) - {c["name"] for c in selected} - {c["id"] for c in selected}
+    selected = [c for c in camps if not camp_filters or c["name"] in camp_filters or c["id"] in camp_filters]
+    missing = set(camp_filters) - {c["name"] for c in selected} - {c["id"] for c in selected}
     if missing:
-        raise ScanError("unknown campaign: " + ", ".join(sorted(missing)))
+        raise ScanError("unknown Camp: " + ", ".join(sorted(missing)))
     if not selected:
-        raise ScanError("no registered campaigns")
+        raise ScanError("no registered Camps")
 
     errors: list[str] = []
     warnings: list[str] = []
     checkouts: list[Checkout] = []
     author_configs: list[dict[str, Any]] = []
-    for campaign in selected:
-        root = Path(campaign["path"]).expanduser().resolve()
+    for camp in selected:
+        root = Path(camp["path"]).expanduser().resolve()
         try:
             author_configs.append(json_file(root / ".campaign/leverage/authors.json"))
             for item in project_entries(root):
                 try:
-                    checkouts.append(checkout_for_project(root, campaign["name"], item))
+                    checkouts.append(checkout_for_project(root, camp["name"], item))
                 except ScanError as exc:
                     if stale_absent_project(root, item):
-                        warnings.append(f"{campaign['name']}/{item.get('Name')}: absent from current Git tree; stale project entry")
+                        warnings.append(f"{camp['name']}/{item.get('Name')}: absent from current Git tree; stale project entry")
                     else:
                         errors.append(str(exc))
         except ScanError as exc:
-            errors.append(f"{campaign['name']}: {exc}")
+            errors.append(f"{camp['name']}: {exc}")
 
     chosen = select_checkouts(checkouts)
     names = {normalize_author_name(name) for name in (seed_names or set()) if name.strip()}
@@ -721,7 +721,7 @@ def calculate(
     git_roots = {checkout.git_root for checkout, _ in chosen}
     pairs: set[tuple[str, str]] = set()
     # A selected Git name can reveal an address missing from Camp's author
-    # files; that address can then connect another campaign identity group.
+    # files; that address can then connect another Camp identity group.
     while True:
         try:
             pairs.update(git_author_pairs(git_roots, emails, names))
@@ -750,7 +750,7 @@ def calculate(
             continue
         if scored is None:
             continue
-        scored["campaigns"] = sorted({c.campaign for c in group})
+        scored["camps"] = sorted({c.camp for c in group})
         scored["checkouts"] = sorted({str(c.scan_path) for c in group})
         rows.append(scored)
 
@@ -761,7 +761,7 @@ def calculate(
         errors.append("no selected-author commits in the scored repositories")
     return {
         "complete": not errors,
-        "campaign_count": len(selected),
+        "camp_count": len(selected),
         "unique_repository_count": len(rows),
         "discovered_repository_count": len(chosen),
         "author_emails": sorted(emails),
@@ -799,7 +799,13 @@ def validate_scc_version() -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--campaign", action="append", default=[], help="exact campaign name or ID (repeatable)")
+    parser.add_argument(
+        "--camp", action="append", dest="camps", default=[],
+        help="exact Camp name or ID (repeatable)",
+    )
+    parser.add_argument(
+        "--campaign", action="append", dest="camps", help=argparse.SUPPRESS,
+    )
     parser.add_argument("--author-email", action="append", default=[], help="author email (repeatable)")
     parser.add_argument(
         "--author-name", action="append", default=[],
@@ -836,7 +842,7 @@ def main() -> int:
         default = command("git", "config", "user.email", allow_failure=True)
         seeds = seed_author_emails(args.author_email, default)
         report = calculate(
-            args.campaign, seeds, seed_names, progress=not args.json, jobs=args.jobs,
+            args.camps, seeds, seed_names, progress=not args.json, jobs=args.jobs,
         )
     except ScanError as exc:
         print(f"leverage: {exc}", file=sys.stderr)

@@ -6,19 +6,19 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import campaign_leverage as leverage
+import camp_leverage as leverage
 
 
 class LeverageTests(unittest.TestCase):
-    def checkout(self, key, path, campaign, *, standalone=True, head_time=1):
+    def checkout(self, key, path, camp, *, standalone=True, head_time=1):
         return leverage.Checkout(
-            key, Path(path), Path(path), campaign, path, standalone, head_time, False
+            key, Path(path), Path(path), camp, path, standalone, head_time, False
         )
 
     def report(self):
         return {
             "complete": True,
-            "campaign_count": 2,
+            "camp_count": 2,
             "unique_repository_count": 1,
             "discovered_repository_count": 1,
             "author_emails": ["developer@example.com"],
@@ -41,7 +41,7 @@ class LeverageTests(unittest.TestCase):
             "repositories": [{
                 "repository": "remote:github.com/example/shared-platform",
                 "estimated_person_months": 50.0,
-                "campaigns": ["Client Work", "Studio"],
+                "camps": ["Client Work", "Studio"],
                 "dirty": False,
                 "weak_identity": False,
             }],
@@ -74,9 +74,9 @@ class LeverageTests(unittest.TestCase):
         selected = leverage.select_checkouts(group)
         self.assertEqual(len(selected), 1)
         self.assertEqual(selected[0][0].scan_path, Path("/direct"))
-        self.assertEqual({c.campaign for c in selected[0][1]}, {"A", "B"})
+        self.assertEqual({c.camp for c in selected[0][1]}, {"A", "B"})
 
-    def test_email_aliases_expand_across_campaigns_and_skip_excluded(self):
+    def test_email_aliases_expand_across_camps_and_skip_excluded(self):
         configs = [
             {"authors": {"lance": {"emails": ["one@example.com", "two@example.com"]}}},
             {"authors": {"founder": {"emails": ["two@example.com", "three@example.com"]},
@@ -87,7 +87,7 @@ class LeverageTests(unittest.TestCase):
             {"one@example.com", "two@example.com", "three@example.com"},
         )
 
-    def test_author_group_name_expands_agent_emails_across_campaigns(self):
+    def test_author_group_name_expands_agent_emails_across_camps(self):
         configs = [
             {"authors": {"automation-agent": {"emails": ["agent@corp.example"]}}},
             {"authors": {"automation": {"emails": ["agent@corp.example", "agent@users.noreply.github.com"]}}},
@@ -147,14 +147,14 @@ class LeverageTests(unittest.TestCase):
         )
 
     def test_history_stats_count_only_selected_author_text_lines(self):
-        output = """@@CAMPAIGN_LEVERAGE@@me@example.com\t2026-01-01T00:00:00+00:00
+        output = """@@CAMP_LEVERAGE@@me@example.com\t2026-01-01T00:00:00+00:00
 
 10\t2\tone.py
 -\t-\timage.png
-@@CAMPAIGN_LEVERAGE@@other@example.com\t2026-01-02T00:00:00+00:00
+@@CAMP_LEVERAGE@@other@example.com\t2026-01-02T00:00:00+00:00
 
 50\t4\tother.py
-@@CAMPAIGN_LEVERAGE@@me@example.com\t2026-02-01T00:00:00+00:00
+@@CAMP_LEVERAGE@@me@example.com\t2026-02-01T00:00:00+00:00
 
 7\t1\ttwo.py
 99\t8\tvendor/generated.go
@@ -190,7 +190,7 @@ class LeverageTests(unittest.TestCase):
             patch.object(leverage, "json_command", return_value=[]),
             patch.object(leverage, "json_file", return_value=config),
         ):
-            entries = leverage.project_entries(Path("/campaign"))
+            entries = leverage.project_entries(Path("/camp"))
         self.assertEqual([entry["Name"] for entry in entries], ["app"])
 
     def test_score_scales_cocomo_effort_by_exact_email_ownership(self):
@@ -222,6 +222,13 @@ class LeverageTests(unittest.TestCase):
         self.assertEqual(leverage.positive_int("3"), 3)
         with self.assertRaisesRegex(argparse.ArgumentTypeError, "at least 1"):
             leverage.positive_int("0")
+
+    def test_camp_flag_keeps_hidden_legacy_alias(self):
+        parser = leverage.build_parser()
+        args = parser.parse_args(["--camp", "Studio", "--campaign", "Client Work"])
+        self.assertEqual(args.camps, ["Studio", "Client Work"])
+        self.assertIn("--camp", parser.format_help())
+        self.assertNotIn("--campaign", parser.format_help())
 
     def test_dependency_check_reports_every_missing_command(self):
         with patch.object(leverage.shutil, "which", side_effect=lambda name: None if name != "git" else "/usr/bin/git"):
@@ -255,7 +262,7 @@ class LeverageTests(unittest.TestCase):
             self.report(), stream=output, error_stream=errors, color="never", width=96,
         )
         rendered = output.getvalue()
-        self.assertIn("CAMPAIGN LEVERAGE", rendered)
+        self.assertIn("CAMP LEVERAGE", rendered)
         self.assertIn("12.5×  full leverage", rendered)
         self.assertIn("CONTRIBUTION", rendered)
         self.assertIn("REPOSITORY", rendered)

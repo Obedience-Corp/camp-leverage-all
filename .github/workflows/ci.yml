@@ -31,13 +31,13 @@ jobs:
       - name: Test
         run: python -m unittest -v
       - name: Compile
-        run: python -m compileall -q campaign_leverage.py
+        run: python -m compileall -q camp_leverage.py
       - name: Build distributions
         run: python -m build
       - name: Smoke-test console commands
         run: |
           leverage --version
-          campaign-leverage --help >/dev/null
+          camp-leverage --help >/dev/null
 
   integration:
     runs-on: ubuntu-latest
@@ -45,10 +45,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Build isolated integration image
-        run: docker build -f tests/integration/Dockerfile -t campaign-leverage-integration .
-      - name: Verify cross-campaign repository deduplication
-        run: docker run --rm --network none campaign-leverage-integration
+        run: docker build -f tests/integration/Dockerfile -t camp-leverage-integration .
+      - name: Verify cross-Camp repository deduplication
+        run: docker run --rm --network none camp-leverage-integration
       - name: Verify terminal rendering in a PTY
         run: >-
           docker run --rm --network none --entrypoint python
-          campaign-leverage-integration /app/tests/terminal/render_pty.py
+          camp-leverage-integration /app/tests/terminal/render_pty.py

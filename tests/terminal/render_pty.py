@@ -21,12 +21,12 @@ COLUMNS = 96
 ROWS = 32
 PIXEL_WIDTH = 1040
 PIXEL_HEIGHT = 680
-FIXTURE_ID = "campaign-leverage-demo-v1"
+FIXTURE_ID = "camp-leverage-demo-v1"
 
 
 def main() -> int:
     repo = Path(__file__).resolve().parents[2]
-    evidence = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("/tmp/campaign-leverage-evidence")
+    evidence = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("/tmp/camp-leverage-evidence")
     evidence.mkdir(parents=True, exist_ok=True)
 
     pid, fd = pty.fork()
@@ -34,7 +34,7 @@ def main() -> int:
         os.chdir(repo)
         command = (
             'eval "$(./scripts/demo-fixture.sh)"; '
-            "exec ./campaign_leverage.py --author-name demo-agent --color always"
+            "exec ./camp_leverage.py --author-name demo-agent --color always"
         )
         environment = {
             **os.environ,
@@ -87,7 +87,7 @@ def main() -> int:
     display = list(screen.display)
     rendered = "\n".join(line.rstrip() for line in display)
     expected = (
-        "CAMPAIGN LEVERAGE",
+        "CAMP LEVERAGE",
         "full leverage",
         "CONTRIBUTION",
         "SCOPE",
