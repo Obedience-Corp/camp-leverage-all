@@ -36,25 +36,21 @@ This is a comparative engineering metric for personal tracking. It is not a valu
 
 Campaign Leverage supports macOS and Linux with Python 3.11 or newer. It expects these commands on `PATH`:
 
-- [`camp`](https://github.com/Obedience-Corp/camp), which supplies registered campaigns and projects
+- [`camp`](https://github.com/Obedience-Corp/camp), installed as part of the [Festival suite](https://github.com/Obedience-Corp/festival), which supplies registered campaigns and projects
 - [`git`](https://git-scm.com/)
 - [`scc`](https://github.com/boyter/scc), version 3.7 or newer, which supplies code counts and COCOMO estimates
 
-A typical setup is:
+Install Festival to get the matched `camp`, `fest`, and `festival` binaries. On macOS:
 
 ```sh
-go install github.com/Obedience-Corp/camp/cmd/camp@latest
+brew install --cask Obedience-Corp/tap/festival
 brew install scc
+festival doctor
 ```
 
-Camp's shell integration provides the `cgo` navigation shortcut:
+The Festival suite is also available through npm, pnpm, bun, Linux packages, and release archives. Follow the [Festival installation guide](https://github.com/Obedience-Corp/festival#install) for the supported command on your platform, then install `scc` separately if your package method did not provide it.
 
-```sh
-eval "$(camp shell-init zsh)"   # add to ~/.zshrc
-cgo leverage
-```
-
-Use the equivalent `bash` or `fish` command from the [Camp installation guide](https://github.com/Obedience-Corp/camp#installation) for those shells.
+Festival's shell integration provides Camp navigation commands such as `cgo`. The [Festival navigation guide](https://github.com/Obedience-Corp/festival#navigation) documents setup for zsh, bash, fish, and POSIX sh.
 
 ## Install
 
