@@ -3,9 +3,9 @@ requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "campaign-leverage"
+name = "camp-leverage"
 version = "0.1.0"
-description = "Calculate personal leverage across Camp campaigns without double-counting repositories"
+description = "Calculate personal leverage across Camps without double-counting repositories"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
@@ -37,16 +37,16 @@ dev = [
 ]
 
 [project.scripts]
-leverage = "campaign_leverage:main"
-campaign-leverage = "campaign_leverage:main"
+leverage = "camp_leverage:main"
+camp-leverage = "camp_leverage:main"
 
 [project.urls]
-Homepage = "https://github.com/Obedience-Corp/campaign-leverage"
-Issues = "https://github.com/Obedience-Corp/campaign-leverage/issues"
-Repository = "https://github.com/Obedience-Corp/campaign-leverage"
+Homepage = "https://github.com/Obedience-Corp/camp-leverage"
+Issues = "https://github.com/Obedience-Corp/camp-leverage/issues"
+Repository = "https://github.com/Obedience-Corp/camp-leverage"
 
 [tool.setuptools]
-py-modules = ["campaign_leverage"]
+py-modules = ["camp_leverage"]
 
 [tool.ruff]
 line-length = 100

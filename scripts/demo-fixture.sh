@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-fixture="$(mktemp -d "${TMPDIR:-/tmp}/campaign-leverage-demo.XXXXXX")"
+fixture="$(mktemp -d "${TMPDIR:-/tmp}/camp-leverage-demo.XXXXXX")"
 fixture="$(cd "$fixture" && pwd -P)"
 mkdir -p \
     "$fixture/bin" \
-    "$fixture/home" \
-    "$fixture/campaign-studio/projects" \
-    "$fixture/campaign-client/projects"
+    "$fixture/profile" \
+    "$fixture/camp-studio/projects" \
+    "$fixture/camp-client/projects"
 
-git_config="$fixture/home/.gitconfig"
+git_config="$fixture/profile/.gitconfig"
 cat > "$git_config" <<'GITCONFIG'
 [user]
     name = Example Developer
@@ -26,7 +26,7 @@ import sys
 
 destination, prefix, count = sys.argv[1], sys.argv[2], int(sys.argv[3])
 lines = [
-    '"""Deterministic source used by the Campaign Leverage terminal demo."""',
+    '"""Deterministic source used by the Camp Leverage terminal demo."""',
     "",
 ]
 for index in range(1, count + 1):
@@ -91,14 +91,14 @@ commit_module "$portal" portal.py portal 780 \
 commit_module "$portal" integrations.py integration 360 \
     "Community Contributor" contributor@example.com "2026-02-15T09:00:00+00:00"
 
-ln -s "$shared_a" "$fixture/campaign-studio/projects/shared-platform"
-ln -s "$toolkit" "$fixture/campaign-studio/projects/automation-toolkit"
-ln -s "$shared_b" "$fixture/campaign-client/projects/shared-platform"
-ln -s "$portal" "$fixture/campaign-client/projects/client-portal"
+ln -s "$shared_a" "$fixture/camp-studio/projects/shared-platform"
+ln -s "$toolkit" "$fixture/camp-studio/projects/automation-toolkit"
+ln -s "$shared_b" "$fixture/camp-client/projects/shared-platform"
+ln -s "$portal" "$fixture/camp-client/projects/client-portal"
 
-for campaign in campaign-studio campaign-client; do
-    mkdir -p "$fixture/$campaign/.campaign/leverage"
-    cat > "$fixture/$campaign/.campaign/leverage/authors.json" <<'JSON'
+for camp in camp-studio camp-client; do
+    mkdir -p "$fixture/$camp/.campaign/leverage"
+    cat > "$fixture/$camp/.campaign/leverage/authors.json" <<'JSON'
 {
   "authors": {
     "example-developer": {
@@ -118,18 +118,18 @@ cat > "$fixture/bin/camp" <<'CAMP'
 #!/usr/bin/env bash
 set -euo pipefail
 
-fixture="${CAMPAIGN_LEVERAGE_DEMO_ROOT:?}"
+fixture="${CAMP_LEVERAGE_DEMO_ROOT:?}"
 if [[ "$*" == "list --format json" ]]; then
     cat <<JSON
 [
-  {"id": "studio", "name": "Studio", "path": "$fixture/campaign-studio"},
-  {"id": "client", "name": "Client Work", "path": "$fixture/campaign-client"}
+  {"id": "studio", "name": "Studio", "path": "$fixture/camp-studio"},
+  {"id": "client", "name": "Client Work", "path": "$fixture/camp-client"}
 ]
 JSON
 elif [[ "$*" == "project list --json" ]]; then
     current_dir="$(pwd -P)"
     case "$current_dir" in
-        "$fixture/campaign-studio")
+        "$fixture/camp-studio")
             cat <<JSON
 [
   {
@@ -147,7 +147,7 @@ elif [[ "$*" == "project list --json" ]]; then
 ]
 JSON
             ;;
-        "$fixture/campaign-client")
+        "$fixture/camp-client")
             cat <<JSON
 [
   {
@@ -166,7 +166,7 @@ JSON
 JSON
             ;;
         *)
-            echo "unexpected campaign directory" >&2
+            echo "unexpected camp directory" >&2
             exit 64
             ;;
     esac
@@ -177,7 +177,7 @@ fi
 CAMP
 chmod +x "$fixture/bin/camp"
 
-printf 'export CAMPAIGN_LEVERAGE_DEMO_ROOT=%q\n' "$fixture"
-printf 'export HOME=%q\n' "$fixture/home"
+printf 'export CAMP_LEVERAGE_DEMO_ROOT=%q\n' "$fixture"
+printf 'export HOME=%q\n' "$fixture/profile"
 printf 'export PATH=%q:$PATH\n' "$fixture/bin"
 printf 'export GIT_CONFIG_NOSYSTEM=1\n'
