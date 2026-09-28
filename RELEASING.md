@@ -6,7 +6,7 @@ The repository can be made public after all checks below pass:
 
 - [x] Apache-2.0 license and copyright notice are present.
 - [x] Installation, privacy, score semantics, and failure behavior are documented.
-- [x] The package builds a wheel and installs both `leverage` and `camp-leverage`.
+- [x] The package builds a wheel and installs only `leverage`, avoiding Camp's native `camp leverage` namespace.
 - [x] Unit tests and package smoke checks run in GitHub Actions on macOS and Linux.
 - [x] A containerized integration fixture verifies that two Camps sharing one remote score it once.
 - [ ] Change repository visibility, then enable GitHub private vulnerability reporting before announcing it.

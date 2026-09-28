@@ -35,9 +35,7 @@ jobs:
       - name: Build distributions
         run: python -m build
       - name: Smoke-test console commands
-        run: |
-          leverage --version
-          camp-leverage --help >/dev/null
+        run: leverage --version
 
   integration:
     runs-on: ubuntu-latest

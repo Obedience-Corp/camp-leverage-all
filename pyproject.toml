@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "camp-leverage"
 version = "0.1.0"
-description = "Calculate personal leverage across Camps without double-counting repositories"
+description = "Aggregate personal leverage across registered Camps without double-counting repositories"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
@@ -38,7 +38,6 @@ dev = [
 
 [project.scripts]
 leverage = "camp_leverage:main"
-camp-leverage = "camp_leverage:main"
 
 [project.urls]
 Homepage = "https://github.com/Obedience-Corp/camp-leverage"

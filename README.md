@@ -80,9 +80,18 @@ Contributors working from a clone can run:
 uv tool install --editable .
 ```
 
-The package installs the short `leverage` command. `camp-leverage` is also available as a descriptive alias.
+The package installs one command: `leverage`.
 
 ## Use
+
+Camp also has a native leverage command. The two commands have separate scopes:
+
+| Command | Scope | State |
+| --- | --- | --- |
+| `camp leverage` | Projects in the current Camp | Maintains configuration, cache, snapshots, and history in `.campaign/leverage/` |
+| `leverage` | All registered Camps by default | Read-only aggregate with repository deduplication |
+
+Camp Leverage intentionally does not install a `camp-leverage` executable because that name implies it replaces Camp's native `camp leverage` command.
 
 Run the complete report using your current Git email and all matching identity groups found in Camp:
 

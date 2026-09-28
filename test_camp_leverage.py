@@ -254,6 +254,10 @@ class LeverageTests(unittest.TestCase):
     def test_package_and_cli_versions_match(self):
         metadata = tomllib.loads(Path(__file__).with_name("pyproject.toml").read_text())
         self.assertEqual(metadata["project"]["version"], leverage.VERSION)
+        self.assertEqual(
+            metadata["project"]["scripts"],
+            {"leverage": "camp_leverage:main"},
+        )
 
     def test_wide_terminal_report_has_hierarchy_and_repository_table(self):
         output = io.StringIO()
