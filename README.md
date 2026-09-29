@@ -41,7 +41,7 @@ uv tool install git+https://github.com/Obedience-Corp/camp-leverage-all.git
 camp leverage-all
 ```
 
-That first report scans every registered Camp, combines your configured Git identities, counts each repository once, and shows how the aggregate score develops over time.
+That first report scans every registered Camp, combines your configured Git identities, and counts each repository once. **The timeline table is included by default; no extra flag is needed.** It shows estimated period rates and a cumulative average. See [Reading the timeline](#reading-the-timeline) for the column definitions and how those estimates are calculated.
 
 Festival supplies the Camp registry and discovers the plugin executable on `PATH`. The plugin remains a separate, read-only Python program; Camp does not import it.
 
@@ -111,7 +111,7 @@ Produce stable machine-readable output and suppress progress messages:
 camp leverage-all --json > leverage.json
 ```
 
-The timeline chooses monthly buckets for spans up to 18 months, quarters up to 72 months, and years for longer histories. Override or disable it when needed:
+The default report includes a timeline (`--timeline auto`). It chooses monthly buckets for spans up to 18 months, quarters up to 72 months, and years for longer histories. Override the interval or explicitly hide the table when needed:
 
 ```sh
 camp leverage-all --timeline month
@@ -132,7 +132,7 @@ Run `camp leverage-all --help` for every option.
 
 ## What it measures
 
-The report combines two different views of your work:
+The report includes these measures of your work:
 
 - **Current ownership:** lines currently attributed to your email addresses by `git blame`, plus your proportional share of `scc`'s current code count and COCOMO estimate.
 - **Lifetime production:** commits and textual lines added or deleted by those email addresses across all branches.
@@ -143,9 +143,36 @@ Repository identities come from normalized Git remotes. SSH aliases, SSH URLs, a
 
 This is a comparative engineering metric for personal tracking. It is not a valuation, a productivity target, or a measure of hours worked.
 
-The aggregate is a ratio, not a sum of Camp scores. It can be lower than one Camp's score when the additional repositories extend the overall first-to-last commit span more than they add estimated effort. The timeline makes that effect visible, and its final cumulative value equals the headline score.
+### Why can one Camp score higher than all Camps?
 
-The timeline is an allocation of today's owned COCOMO effort, not a claim about how large each repository was in the past. Reconstructing historical COCOMO snapshots would require checking out and rescanning every repository at each boundary. The report exposes this distinction in both text and JSON.
+The headline `full leverage` is an all-time average: estimated effort divided by the calendar span between the earliest and latest matching commits. **That span includes quiet periods and gaps between projects.** Adding an older repository can increase the denominator faster than it increases estimated effort.
+
+For example, using illustrative values:
+
+| Scope | Estimated effort | Calendar span | Score |
+| --- | ---: | ---: | ---: |
+| One recent Camp | 600 person-months | 12 months | 50× |
+| All Camps, including older repos | 900 person-months | 36 months | 25× |
+
+The combined scope has more estimated output, but averages it over three times as long. A lower score therefore does not mean less total output. Camp scores with different date spans are not directly comparable; comparisons also need consistent author and repository scope and calculation rules. Summing individual Camp scores would count shared repositories and overlapping work more than once.
+
+### Reading the timeline
+
+Run `camp leverage-all` to see the timeline in the default report. Use `camp leverage-all --timeline month` for monthly detail regardless of history length.
+
+| Column | Meaning |
+| --- | --- |
+| `PERIOD` | Calendar month, quarter, or year. |
+| `ADDED` | Selected authors' textual lines added during that period, across deduplicated repositories. |
+| `OUTPUT` | Current estimated effort allocated to that period, in person-months (`PM`). |
+| `RATE` | That period's allocated output divided by its calendar duration in months. |
+| `CUMULATIVE` | Output allocated through that period divided by the calendar span since the first matching commit. Its final value equals the headline score. |
+
+Use `RATE` to compare the estimated pace between periods. `CUMULATIVE` includes the earlier history, so a recent period can have a high rate while the cumulative average stays much lower. First and last periods cover only the portion within the matching commit span; durations use a minimum of 0.1 month. Period boundaries are in UTC.
+
+**These are allocated estimates, not measured historical scores.** For each repository, the tool distributes today's author-owned COCOMO effort among periods in proportion to the selected authors' textual lines added. It uses commit counts when that repository has no textual additions. It does not check out historical versions or recompute past code size and ownership. Consequently, changes to today's code or ownership can change earlier timeline estimates on a later run.
+
+Historical scores would require reconstructing and measuring repository snapshots at each period boundary. That mode is not implemented. JSON makes the current method explicit with `historical_snapshot: false`.
 
 ## Output and exit status
 
