@@ -9,7 +9,10 @@ cat > "$bin_dir/camp" <<'CAMP'
 #!/bin/sh
 set -eu
 
-if [ "$#" -eq 3 ] && [ "$1" = "list" ] && [ "$2" = "--format" ] && [ "$3" = "json" ]; then
+if [ "${1:-}" = "leverage-all" ]; then
+    shift
+    exec camp-leverage-all "$@"
+elif [ "$#" -eq 3 ] && [ "$1" = "list" ] && [ "$2" = "--format" ] && [ "$3" = "json" ]; then
     cat <<'JSON'
 [
   {"id": "camp-a", "name": "Camp A", "path": "/fixture/camp-a"},
@@ -62,7 +65,7 @@ create_checkout "$fixture/checkout-b" "2026-01-02T00:00:00+00:00"
 ln -s "$fixture/checkout-a" "$fixture/camp-a/projects/shared"
 ln -s "$fixture/checkout-b" "$fixture/camp-b/projects/shared"
 
-PATH="$bin_dir:$PATH" leverage \
+PATH="$bin_dir:$PATH" camp leverage-all \
     --author-email developer@example.com \
     --json > "$fixture/report.json"
 

@@ -119,7 +119,7 @@ def render_text_report(
         print(f"  {style.bold}{label}{style.reset}", file=stream)
 
     print(file=stream)
-    print(f"  {style.bold}{style.accent}CAMP LEVERAGE{style.reset}", file=stream)
+    print(f"  {style.bold}{style.accent}CAMP LEVERAGE ALL{style.reset}", file=stream)
     print(f"  {style.accent}{'━' * rule_width}{style.reset}", file=stream)
 
     summary = report["summary"]
@@ -443,6 +443,10 @@ def project_entries(root: Path) -> list[dict[str, Any]]:
         return [item for item in discovered if not WORKTREE_DIRS.intersection(Path(item.get("Path", "")).parts)]
     by_path = {item.get("Path"): item for item in discovered}
     entries = []
+    configured_names = set(configured)
+    configured_paths = {
+        entry.get("path") for entry in configured.values() if entry.get("path")
+    }
     for name, entry in sorted(configured.items()):
         if not entry.get("include"):
             continue
@@ -455,6 +459,14 @@ def project_entries(root: Path) -> list[dict[str, Any]]:
         item.update(Name=name, Path=path)
         if entry.get("in_monorepo"):
             item["MonorepoRoot"] = entry.get("monorepo_path", "")
+        entries.append(item)
+    for item in discovered:
+        name = item.get("Name")
+        path = item.get("Path", "")
+        if name in configured_names or path in configured_paths:
+            continue
+        if WORKTREE_DIRS.intersection(Path(path).parts):
+            continue
         entries.append(item)
     return entries
 
@@ -798,7 +810,7 @@ def validate_scc_version() -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(prog="camp leverage-all", description=__doc__)
     parser.add_argument(
         "--camp", action="append", dest="camps", default=[],
         help="exact Camp name or ID (repeatable)",
@@ -845,7 +857,7 @@ def main() -> int:
             args.camps, seeds, seed_names, progress=not args.json, jobs=args.jobs,
         )
     except ScanError as exc:
-        print(f"leverage: {exc}", file=sys.stderr)
+        print(f"camp leverage-all: {exc}", file=sys.stderr)
         return 2
     if args.json:
         print(json.dumps(report, indent=2))

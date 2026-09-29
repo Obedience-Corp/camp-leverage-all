@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import camp_leverage as leverage
+import camp_leverage_all as leverage
 
 
 class LeverageTests(unittest.TestCase):
@@ -177,6 +177,22 @@ class LeverageTests(unittest.TestCase):
         self.assertAlmostEqual(result["actual_person_months"], 59 / 30.44)
         self.assertAlmostEqual(result["full_leverage"], 30 / (59 / 30.44))
 
+    def test_aggregate_ratio_can_be_lower_than_a_single_camp_ratio(self):
+        recent = {
+            "estimated_person_months": 100,
+            "first_commit": "2026-02-01T00:00:00+00:00",
+            "last_commit": "2026-03-01T00:00:00+00:00",
+        }
+        older = {
+            "estimated_person_months": 10,
+            "first_commit": "2025-03-01T00:00:00+00:00",
+            "last_commit": "2025-04-01T00:00:00+00:00",
+        }
+        self.assertLess(
+            leverage.aggregate([recent, older])["full_leverage"],
+            leverage.aggregate([recent])["full_leverage"],
+        )
+
     def test_no_author_commits_is_an_error(self):
         with self.assertRaisesRegex(leverage.ScanError, "no selected-author commits"):
             leverage.aggregate([])
@@ -192,6 +208,26 @@ class LeverageTests(unittest.TestCase):
         ):
             entries = leverage.project_entries(Path("/camp"))
         self.assertEqual([entry["Name"] for entry in entries], ["app"])
+
+    def test_newly_discovered_projects_are_not_hidden_by_stale_config(self):
+        config = {"projects": {
+            "configured": {"path": "projects/configured", "include": True},
+            "excluded": {"path": "projects/excluded", "include": False},
+        }}
+        discovered = [
+            {"Name": "configured", "Path": "projects/configured"},
+            {"Name": "excluded", "Path": "projects/excluded"},
+            {"Name": "new-project", "Path": "projects/new-project"},
+        ]
+        with (
+            patch.object(leverage, "json_command", return_value=discovered),
+            patch.object(leverage, "json_file", return_value=config),
+        ):
+            entries = leverage.project_entries(Path("/camp"))
+        self.assertEqual(
+            [entry["Name"] for entry in entries],
+            ["configured", "new-project"],
+        )
 
     def test_score_scales_cocomo_effort_by_exact_email_ownership(self):
         checkout = self.checkout("remote:github.com/o/repo", "/repo", "A")
@@ -256,7 +292,7 @@ class LeverageTests(unittest.TestCase):
         self.assertEqual(metadata["project"]["version"], leverage.VERSION)
         self.assertEqual(
             metadata["project"]["scripts"],
-            {"leverage": "camp_leverage:main"},
+            {"camp-leverage-all": "camp_leverage_all:main"},
         )
 
     def test_wide_terminal_report_has_hierarchy_and_repository_table(self):
@@ -266,7 +302,7 @@ class LeverageTests(unittest.TestCase):
             self.report(), stream=output, error_stream=errors, color="never", width=96,
         )
         rendered = output.getvalue()
-        self.assertIn("CAMP LEVERAGE", rendered)
+        self.assertIn("CAMP LEVERAGE ALL", rendered)
         self.assertIn("12.5×  full leverage", rendered)
         self.assertIn("CONTRIBUTION", rendered)
         self.assertIn("REPOSITORY", rendered)
