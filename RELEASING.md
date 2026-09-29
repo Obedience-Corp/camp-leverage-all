@@ -9,9 +9,11 @@ The repository can be made public after all checks below pass:
 - [x] The package builds a wheel and installs the `camp-leverage-all` plugin executable, avoiding Camp's native `camp leverage` namespace.
 - [x] Unit tests and package smoke checks run in GitHub Actions on macOS and Linux.
 - [x] A containerized integration fixture verifies that two Camps sharing one remote score it once.
+- [x] Public fixtures and runtime defaults contain no user-specific author, Camp, or filesystem assumptions.
+- [x] Timeline output identifies its allocation method, disclaims historical snapshots, and ends at the headline score.
 - [ ] Change repository visibility, then enable GitHub private vulnerability reporting before announcing it.
 - [x] The tracked files contain no machine-specific paths, private Camp names, or real author addresses.
-- [x] Version `0.1.0` will install directly from GitHub; PyPI publishing is deferred.
+- [x] Version `0.2.0` will install directly from GitHub; PyPI publishing is deferred.
 
 The containerized fixture proves repository discovery, Git history, `scc`, packaging, and remote deduplication together without mutating the host filesystem.
 

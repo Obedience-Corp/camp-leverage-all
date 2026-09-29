@@ -38,6 +38,16 @@ class LeverageTests(unittest.TestCase):
                 "estimated_current_code_lines": 7_654,
                 "current_code_lines": 10_000,
             },
+            "timeline": {
+                "interval": "quarter",
+                "periods": [{
+                    "label": "2026 Q1",
+                    "lines_added": 4_321,
+                    "estimated_person_months": 20.0,
+                    "full_leverage": 6.7,
+                    "cumulative_leverage": 6.7,
+                }],
+            },
             "repositories": [{
                 "repository": "remote:github.com/example/shared-platform",
                 "estimated_person_months": 50.0,
@@ -62,7 +72,7 @@ class LeverageTests(unittest.TestCase):
     def test_ssh_alias_resolves_to_same_repo_as_https(self):
         with patch.object(leverage, "canonical_ssh_host", return_value="github.com"):
             self.assertEqual(
-                leverage.normalize_remote("git@github-veronica-agent:Obedience-Corp/camp.git"),
+                leverage.normalize_remote("git@github-work:Obedience-Corp/camp.git"),
                 leverage.normalize_remote("https://github.com/Obedience-Corp/camp.git"),
             )
 
@@ -78,7 +88,7 @@ class LeverageTests(unittest.TestCase):
 
     def test_email_aliases_expand_across_camps_and_skip_excluded(self):
         configs = [
-            {"authors": {"lance": {"emails": ["one@example.com", "two@example.com"]}}},
+            {"authors": {"developer": {"emails": ["one@example.com", "two@example.com"]}}},
             {"authors": {"founder": {"emails": ["two@example.com", "three@example.com"]},
                          "bot": {"emails": ["three@example.com", "bot@example.com"], "exclude": True}}},
         ]
@@ -166,6 +176,10 @@ class LeverageTests(unittest.TestCase):
         self.assertEqual(stats["lines_deleted"], 3)
         self.assertEqual(stats["first_commit"], "2026-01-01T00:00:00+00:00")
         self.assertEqual(stats["last_commit"], "2026-02-01T00:00:00+00:00")
+        self.assertEqual(stats["activity"], [
+            {"month": "2026-01", "commit_count": 1, "lines_added": 10, "lines_deleted": 2},
+            {"month": "2026-02", "commit_count": 1, "lines_added": 7, "lines_deleted": 1},
+        ])
 
     def test_aggregate_unions_calendar_span_instead_of_summing_repo_effort(self):
         rows = [
@@ -193,6 +207,45 @@ class LeverageTests(unittest.TestCase):
             leverage.aggregate([recent])["full_leverage"],
         )
 
+    def test_timeline_allocates_effort_and_ends_at_full_score(self):
+        rows = [{
+            "estimated_person_months": 120.0,
+            "first_commit": "2025-01-15T00:00:00+00:00",
+            "last_commit": "2026-04-15T00:00:00+00:00",
+            "commit_count": 3,
+            "lines_added": 120,
+            "lines_deleted": 12,
+            "activity": [
+                {"month": "2025-01", "commit_count": 1, "lines_added": 20, "lines_deleted": 2},
+                {"month": "2025-07", "commit_count": 1, "lines_added": 40, "lines_deleted": 4},
+                {"month": "2026-04", "commit_count": 1, "lines_added": 60, "lines_deleted": 6},
+            ],
+        }]
+        timeline = leverage.build_timeline(rows)
+        self.assertEqual(timeline["interval"], "month")
+        self.assertFalse(timeline["historical_snapshot"])
+        self.assertAlmostEqual(
+            sum(period["estimated_person_months"] for period in timeline["periods"]),
+            120.0,
+        )
+        self.assertAlmostEqual(
+            timeline["periods"][-1]["cumulative_leverage"],
+            leverage.aggregate(rows)["full_leverage"],
+        )
+
+    def test_auto_timeline_uses_quarters_for_multi_year_span(self):
+        first = leverage.datetime.fromisoformat("2023-06-01T00:00:00+00:00")
+        last = leverage.datetime.fromisoformat("2026-09-01T00:00:00+00:00")
+        self.assertEqual(leverage.resolved_timeline_interval(first, last, "auto"), "quarter")
+        self.assertEqual(leverage.resolved_timeline_interval(first, last, "year"), "year")
+
+    def test_timeline_can_be_disabled(self):
+        self.assertIsNone(leverage.build_timeline([{
+            "estimated_person_months": 1.0,
+            "first_commit": "2026-01-01T00:00:00+00:00",
+            "last_commit": "2026-02-01T00:00:00+00:00",
+        }], "none"))
+
     def test_no_author_commits_is_an_error(self):
         with self.assertRaisesRegex(leverage.ScanError, "no selected-author commits"):
             leverage.aggregate([])
@@ -208,6 +261,18 @@ class LeverageTests(unittest.TestCase):
         ):
             entries = leverage.project_entries(Path("/camp"))
         self.assertEqual([entry["Name"] for entry in entries], ["app"])
+
+    def test_project_discovery_rebinds_inherited_plugin_camp_root(self):
+        root = Path("/registered/camp")
+        with (
+            patch.object(leverage, "json_command", return_value=[]) as run,
+            patch.object(leverage, "json_file", return_value={}),
+        ):
+            self.assertEqual(leverage.project_entries(root), [])
+        run.assert_called_once_with(
+            "camp", "project", "list", "--json", cwd=root,
+            environment={"CAMP_ROOT": str(root)},
+        )
 
     def test_newly_discovered_projects_are_not_hidden_by_stale_config(self):
         config = {"projects": {
@@ -265,6 +330,7 @@ class LeverageTests(unittest.TestCase):
         self.assertEqual(args.camps, ["Studio", "Client Work"])
         self.assertIn("--camp", parser.format_help())
         self.assertNotIn("--campaign", parser.format_help())
+        self.assertEqual(args.timeline, "auto")
 
     def test_dependency_check_reports_every_missing_command(self):
         with patch.object(leverage.shutil, "which", side_effect=lambda name: None if name != "git" else "/usr/bin/git"):
@@ -305,6 +371,8 @@ class LeverageTests(unittest.TestCase):
         self.assertIn("CAMP LEVERAGE ALL", rendered)
         self.assertIn("12.5×  full leverage", rendered)
         self.assertIn("CONTRIBUTION", rendered)
+        self.assertIn("TIMELINE · QUARTER", rendered)
+        self.assertIn("2026 Q1", rendered)
         self.assertIn("REPOSITORY", rendered)
         self.assertIn("github.com/example/shared-platform", rendered)
         self.assertNotIn("remote:", rendered)

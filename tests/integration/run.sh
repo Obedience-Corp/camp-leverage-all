@@ -20,6 +20,10 @@ elif [ "$#" -eq 3 ] && [ "$1" = "list" ] && [ "$2" = "--format" ] && [ "$3" = "j
 ]
 JSON
 elif [ "$#" -eq 3 ] && [ "$1" = "project" ] && [ "$2" = "list" ] && [ "$3" = "--json" ]; then
+    if [ "${CAMP_ROOT:-}" != "$(pwd -P)" ]; then
+        echo "CAMP_ROOT does not match the Camp being scanned" >&2
+        exit 64
+    fi
     cat <<'JSON'
 [
   {
@@ -65,7 +69,7 @@ create_checkout "$fixture/checkout-b" "2026-01-02T00:00:00+00:00"
 ln -s "$fixture/checkout-a" "$fixture/camp-a/projects/shared"
 ln -s "$fixture/checkout-b" "$fixture/camp-b/projects/shared"
 
-PATH="$bin_dir:$PATH" camp leverage-all \
+CAMP_ROOT="$fixture/camp-a" PATH="$bin_dir:$PATH" camp leverage-all \
     --author-email developer@example.com \
     --json > "$fixture/report.json"
 
@@ -83,5 +87,7 @@ assert report["author_emails"] == ["developer@example.com"]
 assert report["repositories"][0]["camps"] == ["Camp A", "Camp B"]
 assert report["repositories"][0]["commit_count"] == 1
 assert report["summary"]["full_leverage"] > 0
+assert report["timeline"]["historical_snapshot"] is False
+assert report["timeline"]["periods"][-1]["cumulative_leverage"] == report["summary"]["full_leverage"]
 print("integration: duplicate remote scored once across two Camps")
 PY
