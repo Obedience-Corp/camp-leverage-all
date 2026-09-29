@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-fixture="$(mktemp -d "${TMPDIR:-/tmp}/camp-leverage-demo.XXXXXX")"
+demo_repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+fixture="$(mktemp -d "${TMPDIR:-/tmp}/camp-leverage-all-demo.XXXXXX")"
 fixture="$(cd "$fixture" && pwd -P)"
 mkdir -p \
     "$fixture/bin" \
@@ -26,7 +27,7 @@ import sys
 
 destination, prefix, count = sys.argv[1], sys.argv[2], int(sys.argv[3])
 lines = [
-    '"""Deterministic source used by the Camp Leverage terminal demo."""',
+    '"""Deterministic source used by the Camp Leverage All terminal demo."""',
     "",
 ]
 for index in range(1, count + 1):
@@ -119,7 +120,10 @@ cat > "$fixture/bin/camp" <<'CAMP'
 set -euo pipefail
 
 fixture="${CAMP_LEVERAGE_DEMO_ROOT:?}"
-if [[ "$*" == "list --format json" ]]; then
+if [[ "${1:-}" == "leverage-all" ]]; then
+    shift
+    exec "${CAMP_LEVERAGE_ALL_DEMO_EXEC:?}" "$@"
+elif [[ "$*" == "list --format json" ]]; then
     cat <<JSON
 [
   {"id": "studio", "name": "Studio", "path": "$fixture/camp-studio"},
@@ -178,6 +182,7 @@ CAMP
 chmod +x "$fixture/bin/camp"
 
 printf 'export CAMP_LEVERAGE_DEMO_ROOT=%q\n' "$fixture"
+printf 'export CAMP_LEVERAGE_ALL_DEMO_EXEC=%q\n' "$demo_repo_root/camp_leverage_all.py"
 printf 'export HOME=%q\n' "$fixture/profile"
 printf 'export PATH=%q:$PATH\n' "$fixture/bin"
 printf 'export GIT_CONFIG_NOSYSTEM=1\n'

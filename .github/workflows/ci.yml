@@ -31,11 +31,11 @@ jobs:
       - name: Test
         run: python -m unittest -v
       - name: Compile
-        run: python -m compileall -q camp_leverage.py
+        run: python -m compileall -q camp_leverage_all.py
       - name: Build distributions
         run: python -m build
       - name: Smoke-test console commands
-        run: leverage --version
+        run: camp-leverage-all --version
 
   integration:
     runs-on: ubuntu-latest

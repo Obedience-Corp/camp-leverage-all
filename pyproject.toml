@@ -3,7 +3,7 @@ requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "camp-leverage"
+name = "camp-leverage-all"
 version = "0.1.0"
 description = "Aggregate personal leverage across registered Camps without double-counting repositories"
 readme = "README.md"
@@ -37,15 +37,15 @@ dev = [
 ]
 
 [project.scripts]
-leverage = "camp_leverage:main"
+camp-leverage-all = "camp_leverage_all:main"
 
 [project.urls]
-Homepage = "https://github.com/Obedience-Corp/camp-leverage"
-Issues = "https://github.com/Obedience-Corp/camp-leverage/issues"
-Repository = "https://github.com/Obedience-Corp/camp-leverage"
+Homepage = "https://github.com/Obedience-Corp/camp-leverage-all"
+Issues = "https://github.com/Obedience-Corp/camp-leverage-all/issues"
+Repository = "https://github.com/Obedience-Corp/camp-leverage-all"
 
 [tool.setuptools]
-py-modules = ["camp_leverage"]
+py-modules = ["camp_leverage_all"]
 
 [tool.ruff]
 line-length = 100

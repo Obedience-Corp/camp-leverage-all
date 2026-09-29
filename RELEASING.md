@@ -1,4 +1,4 @@
-# Releasing Camp Leverage
+# Releasing Camp Leverage All
 
 ## Public repository readiness
 
@@ -6,7 +6,7 @@ The repository can be made public after all checks below pass:
 
 - [x] Apache-2.0 license and copyright notice are present.
 - [x] Installation, privacy, score semantics, and failure behavior are documented.
-- [x] The package builds a wheel and installs only `leverage`, avoiding Camp's native `camp leverage` namespace.
+- [x] The package builds a wheel and installs the `camp-leverage-all` plugin executable, avoiding Camp's native `camp leverage` namespace.
 - [x] Unit tests and package smoke checks run in GitHub Actions on macOS and Linux.
 - [x] A containerized integration fixture verifies that two Camps sharing one remote score it once.
 - [ ] Change repository visibility, then enable GitHub private vulnerability reporting before announcing it.
@@ -17,7 +17,7 @@ The containerized fixture proves repository discovery, Git history, `scc`, packa
 
 ## Version release
 
-1. Update `VERSION` in `camp_leverage.py` and `version` in `pyproject.toml`.
+1. Update `VERSION` in `camp_leverage_all.py` and `version` in `pyproject.toml`.
 2. Update any user-visible behavior in `README.md` and `SPEC.md`.
 3. Run the development checks from `CONTRIBUTING.md`.
 4. Build and inspect the distributions:
@@ -31,8 +31,8 @@ The containerized fixture proves repository discovery, Git history, `scc`, packa
 5. Install the wheel into a clean virtual environment and run:
 
    ```sh
-   leverage --version
-   leverage --help
+   camp leverage-all --version
+   camp leverage-all --help
    ```
 
 6. Tag the verified commit as `vX.Y.Z` and create a GitHub release.

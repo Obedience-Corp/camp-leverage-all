@@ -12,12 +12,12 @@ RUN apt-get update \
 COPY --from=scc-build /out/scc /usr/local/bin/scc
 
 WORKDIR /app
-COPY LICENSE NOTICE README.md camp_leverage.py pyproject.toml ./
+COPY LICENSE NOTICE README.md camp_leverage_all.py pyproject.toml ./
 RUN python -m pip install --no-cache-dir --disable-pip-version-check . pyte==0.8.2
 
-COPY tests/integration/run.sh /usr/local/bin/camp-leverage-integration
+COPY tests/integration/run.sh /usr/local/bin/camp-leverage-all-integration
 COPY scripts/demo-fixture.sh /app/scripts/demo-fixture.sh
 COPY tests/terminal/render_pty.py /app/tests/terminal/render_pty.py
-RUN chmod +x /usr/local/bin/camp-leverage-integration
+RUN chmod +x /usr/local/bin/camp-leverage-all-integration
 
-ENTRYPOINT ["camp-leverage-integration"]
+ENTRYPOINT ["camp-leverage-all-integration"]
