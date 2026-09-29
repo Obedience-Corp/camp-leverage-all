@@ -7,7 +7,7 @@ One command reports the user's cumulative personal leverage over all registered 
 ## Inputs and scope
 
 - `camp list --format json` supplies registered Camps. The default includes every registered Camp, including demos and inactive Camps. `--camp` narrows the set by exact name or ID; `--campaign` remains a hidden compatibility alias.
-- `camp project list --json` supplies each Camp's projects. Entries in `.campaign/leverage/config.json` override discovered projects with the same name or path; `include: false` excludes them and an explicit configured path is authoritative. Newly discovered projects remain eligible when the read-only config is stale. Worktree directories are excluded because they duplicate project checkouts.
+- `camp project list --json` supplies each Camp's projects. Every call binds `CAMP_ROOT` to the Camp being scanned so the environment inherited through Camp's plugin dispatcher cannot pin discovery to the invoking Camp. Entries in `.campaign/leverage/config.json` override discovered projects with the same name or path; `include: false` excludes them and an explicit configured path is authoritative. Newly discovered projects remain eligible when the read-only config is stale. Worktree directories are excluded because they duplicate project checkouts.
 - An email from `--author-email`, or `git config user.email` by default, seeds identity matching. `--author-name` selects an exact Git author name or Camp author-group key. Any identity group in a selected Camp's `authors.json` containing a known email or explicitly selected group name adds all its emails. Explicit Git names also discover their exact commit emails. Expansion repeats until stable across Camps, but labels of groups reached transitively never become Git-name selectors. Excluded groups do not contribute. The report lists the resulting emails, explicit names, matched groups, and matched Git identities.
 - No Camp's leverage state is written. `scc` and Git are invoked directly; the script needs no service or Python dependencies.
 
@@ -37,11 +37,22 @@ The first and last author commit dates are merged across unique repositories bef
 
 Because the result is a ratio over the combined commit span, adding a Camp does not guarantee a higher aggregate score. A newly included repository can extend the overall calendar span more than it increases estimated effort. The aggregate numerator, denominator, and dates are all reported so this behavior is explicit.
 
+## Timeline
+
+The timeline explains how the combined ratio develops across the full commit span. It does not reconstruct historical repository sizes. For each unique repository, the current `personal_estimated_pm` is allocated among months in proportion to the selected authors' textual lines added in those months. If that repository has no textual additions, its selected-author commits become the allocation basis. This preserves the deduplicated headline numerator while making the timing of production visible.
+
+Periods partition the same calendar span used by the headline score. Each period reports authored commits and lines added/deleted, allocated person-months, allocated person-months divided by that period's calendar months, and the cumulative person-months divided by calendar months since the first matching commit. Empty periods remain visible with zero output. The last period's cumulative leverage equals `full_leverage`.
+
+With `--timeline auto`, spans up to 18 months use calendar months, spans up to 72 months use calendar quarters, and longer spans use calendar years. `--timeline month`, `quarter`, or `year` selects a fixed interval; `--timeline none` omits it.
+
+JSON identifies the method as `current-owned-effort-allocated-by-authored-lines/v1`, records the fallback allocation basis, and sets `historical_snapshot` to `false`. A future snapshot mode would need to check out and run `scc` against each repository at historical boundaries; the current output does not imply that evidence exists.
+
 ## Failure and verification cases
 
 - The same remote attached to two Camps contributes once and reports both memberships.
 - SSH/HTTPS spellings of the same remote deduplicate. Different remotes remain separate even if names match.
 - Parent monorepo and its nested Git submodule contribute once each; a monorepo child entry cannot add the parent's code a second time.
 - One author using two configured emails gets one merged span. No matching commits is an error, not a zero denominator.
+- Timeline allocation sums to the aggregate estimated person-months, and its final cumulative rate equals the headline full leverage score.
 - Missing project directories that still exist in the current Git tree, failed `scc` or blame scans, invalid JSON, and unreadable Camps produce an incomplete report and nonzero exit. A missing configured path absent from the current Git tree is reported as stale metadata and excluded.
-- Unit tests cover identity, checkout selection, author expansion, and aggregation. A live run validates registered Camp discovery and the final report; a two Camp fixture checks visible duplicate membership.
+- Unit tests cover identity, checkout selection, author expansion, aggregation, and timeline invariants. A live run validates registered Camp discovery and the final report; a two Camp fixture checks visible duplicate membership and the timeline endpoint.

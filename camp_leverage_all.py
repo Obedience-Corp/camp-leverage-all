@@ -13,7 +13,7 @@ import sys
 from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -29,10 +29,12 @@ MIN_AUTHOR_MONTHS = 0.1
 SECONDS_PER_MONTH = 30.44 * 24 * 60 * 60
 WORKTREE_DIRS = {"worktrees", ".worktrees", ".camp-worktrees"}
 REQUIRED_COMMANDS = ("camp", "git", "scc")
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 MINIMUM_SCC_VERSION = (3, 7)
 DEFAULT_JOBS = max(1, min(8, os.cpu_count() or 1))
 COMMAND_TIMEOUT_SECONDS = 15 * 60
+TIMELINE_INTERVALS = ("auto", "month", "quarter", "year", "none")
+TIMELINE_METHOD = "current-owned-effort-allocated-by-authored-lines/v1"
 
 
 class ScanError(Exception):
@@ -177,6 +179,37 @@ def render_text_report(
             file=stream,
         )
 
+    timeline = report.get("timeline")
+    if timeline and timeline["periods"]:
+        section(f"TIMELINE · {timeline['interval'].upper()}")
+        print(
+            f"  {style.dim}Current owned effort allocated by authored lines added.{style.reset}",
+            file=stream,
+        )
+        if columns >= 78:
+            headings = (
+                f"{'PERIOD':<10}  {'ADDED':>11}  {'OUTPUT':>10}"
+                f"  {'RATE':>9}  {'CUMULATIVE':>12}"
+            )
+            print(f"  {style.dim}{headings}{style.reset}", file=stream)
+            for period in timeline["periods"]:
+                print(
+                    f"  {period['label']:<10}  {period['lines_added']:>11,}"
+                    f"  {period['estimated_person_months']:>7.1f} PM"
+                    f"  {style.accent}{period['full_leverage']:>8.1f}×{style.reset}"
+                    f"  {period['cumulative_leverage']:>11.1f}×",
+                    file=stream,
+                )
+        else:
+            for period in timeline["periods"]:
+                print(
+                    f"  {style.bold}{period['label']}{style.reset}"
+                    f"  {period['estimated_person_months']:.1f} PM"
+                    f" {style.dim}·{style.reset} {period['full_leverage']:.1f}× period"
+                    f" {style.dim}·{style.reset} {period['cumulative_leverage']:.1f}× cumulative",
+                    file=stream,
+                )
+
     if report["repositories"]:
         section("REPOSITORIES")
         if columns >= 78:
@@ -250,7 +283,12 @@ def render_text_report(
         )
 
 
-def command(*args: str, cwd: Path | None = None, allow_failure: bool = False) -> str:
+def command(
+    *args: str,
+    cwd: Path | None = None,
+    allow_failure: bool = False,
+    environment: dict[str, str] | None = None,
+) -> str:
     try:
         result = subprocess.run(
             args,
@@ -258,6 +296,7 @@ def command(*args: str, cwd: Path | None = None, allow_failure: bool = False) ->
             capture_output=True,
             text=True,
             check=False,
+            env={**os.environ, **environment} if environment else None,
             timeout=COMMAND_TIMEOUT_SECONDS,
         )
     except subprocess.TimeoutExpired as exc:
@@ -277,8 +316,12 @@ def json_file(path: Path) -> dict[str, Any]:
         raise ScanError(f"{path}: {exc}") from exc
 
 
-def json_command(*args: str, cwd: Path | None = None) -> Any:
-    raw = command(*args, cwd=cwd)
+def json_command(
+    *args: str,
+    cwd: Path | None = None,
+    environment: dict[str, str] | None = None,
+) -> Any:
+    raw = command(*args, cwd=cwd, environment=environment)
     try:
         return json.loads(raw)
     except json.JSONDecodeError as exc:
@@ -434,7 +477,10 @@ def seed_author_emails(cli_emails: list[str], default_email: str) -> set[str]:
 
 
 def project_entries(root: Path) -> list[dict[str, Any]]:
-    discovered = json_command("camp", "project", "list", "--json", cwd=root)
+    discovered = json_command(
+        "camp", "project", "list", "--json", cwd=root,
+        environment={"CAMP_ROOT": str(root)},
+    )
     if not isinstance(discovered, list):
         raise ScanError(f"{root}: camp project list returned a non-list")
     config = json_file(root / ".campaign/leverage/config.json")
@@ -540,8 +586,12 @@ def author_history_stats(git_root: Path, scan_path: Path, emails: set[str]) -> d
         args.extend(("--", str(relative)))
     raw = command(*args, cwd=git_root)
     selected = False
+    selected_month = ""
     dates: list[datetime] = []
     added = deleted = commits = 0
+    activity: defaultdict[str, dict[str, int]] = defaultdict(
+        lambda: {"commit_count": 0, "lines_added": 0, "lines_deleted": 0}
+    )
     marker = "@@CAMP_LEVERAGE@@"
     for line in raw.splitlines():
         if line.startswith(marker):
@@ -550,10 +600,15 @@ def author_history_stats(git_root: Path, scan_path: Path, emails: set[str]) -> d
             selected = bool(separator and email.strip().lower() in emails)
             if selected:
                 try:
-                    dates.append(datetime.fromisoformat(stamp))
+                    commit_date = datetime.fromisoformat(stamp)
                 except ValueError as exc:
                     raise ScanError(f"{git_root}: invalid Git date {stamp!r}") from exc
+                dates.append(commit_date)
+                selected_month = commit_date.astimezone(UTC).strftime("%Y-%m")
+                activity[selected_month]["commit_count"] += 1
                 commits += 1
+            else:
+                selected_month = ""
             continue
         if not selected or not line:
             continue
@@ -564,12 +619,18 @@ def author_history_stats(git_root: Path, scan_path: Path, emails: set[str]) -> d
         if separator and separator2 and added_text.isdigit() and deleted_text.isdigit():
             added += int(added_text)
             deleted += int(deleted_text)
+            activity[selected_month]["lines_added"] += int(added_text)
+            activity[selected_month]["lines_deleted"] += int(deleted_text)
     return {
         "commit_count": commits,
         "lines_added": added,
         "lines_deleted": deleted,
         "first_commit": min(dates).isoformat() if dates else None,
         "last_commit": max(dates).isoformat() if dates else None,
+        "activity": [
+            {"month": month, **activity[month]}
+            for month in sorted(activity)
+        ],
     }
 
 
@@ -690,6 +751,125 @@ def aggregate(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def resolved_timeline_interval(first: datetime, last: datetime, requested: str) -> str:
+    if requested != "auto":
+        return requested
+    months = max(MIN_AUTHOR_MONTHS, (last - first).total_seconds() / SECONDS_PER_MONTH)
+    if months <= 18:
+        return "month"
+    if months <= 72:
+        return "quarter"
+    return "year"
+
+
+def period_start(value: datetime, interval: str) -> datetime:
+    value = value.astimezone(UTC)
+    if interval == "month":
+        month = value.month
+    elif interval == "quarter":
+        month = ((value.month - 1) // 3) * 3 + 1
+    elif interval == "year":
+        month = 1
+    else:
+        raise ValueError(f"unsupported timeline interval: {interval}")
+    return datetime(value.year, month, 1, tzinfo=UTC)
+
+
+def next_period(value: datetime, interval: str) -> datetime:
+    months = {"month": 1, "quarter": 3, "year": 12}[interval]
+    absolute_month = value.year * 12 + value.month - 1 + months
+    return datetime(absolute_month // 12, absolute_month % 12 + 1, 1, tzinfo=UTC)
+
+
+def period_label(value: datetime, interval: str) -> str:
+    if interval == "month":
+        return value.strftime("%Y-%m")
+    if interval == "quarter":
+        return f"{value.year} Q{((value.month - 1) // 3) + 1}"
+    return str(value.year)
+
+
+def build_timeline(rows: list[dict[str, Any]], requested: str = "auto") -> dict[str, Any] | None:
+    """Allocate current owned effort across commit periods without claiming snapshots."""
+    if requested == "none" or not rows:
+        return None
+    first = min(datetime.fromisoformat(row["first_commit"]) for row in rows).astimezone(UTC)
+    last = max(datetime.fromisoformat(row["last_commit"]) for row in rows).astimezone(UTC)
+    interval = resolved_timeline_interval(first, last, requested)
+    starts = []
+    cursor = period_start(first, interval)
+    while cursor <= last:
+        starts.append(cursor)
+        cursor = next_period(cursor, interval)
+    buckets = {
+        start: {
+            "commit_count": 0,
+            "lines_added": 0,
+            "lines_deleted": 0,
+            "estimated_person_months": 0.0,
+        }
+        for start in starts
+    }
+
+    for row in rows:
+        activities = list(row.get("activity", []))
+        if not activities:
+            activities = [{
+                "month": datetime.fromisoformat(row["last_commit"]).astimezone(UTC).strftime("%Y-%m"),
+                "commit_count": row.get("commit_count", 0),
+                "lines_added": row.get("lines_added", 0),
+                "lines_deleted": row.get("lines_deleted", 0),
+            }]
+        added_total = sum(item.get("lines_added", 0) for item in activities)
+        commit_total = sum(item.get("commit_count", 0) for item in activities)
+        denominator = added_total or commit_total or 1
+        for item in activities:
+            month = datetime.strptime(item["month"], "%Y-%m").replace(tzinfo=UTC)
+            start = period_start(month, interval)
+            bucket = buckets[start]
+            bucket["commit_count"] += item.get("commit_count", 0)
+            bucket["lines_added"] += item.get("lines_added", 0)
+            bucket["lines_deleted"] += item.get("lines_deleted", 0)
+            weight = item.get("lines_added", 0) if added_total else item.get("commit_count", 0)
+            bucket["estimated_person_months"] += (
+                row["estimated_person_months"] * weight / denominator
+            )
+
+    periods = []
+    cumulative_estimated = 0.0
+    for start in starts:
+        end = min(next_period(start, interval), last)
+        active_start = max(start, first)
+        elapsed = max(MIN_AUTHOR_MONTHS, (end - active_start).total_seconds() / SECONDS_PER_MONTH)
+        cumulative_elapsed = max(
+            MIN_AUTHOR_MONTHS, (end - first).total_seconds() / SECONDS_PER_MONTH
+        )
+        bucket = buckets[start]
+        estimated = bucket["estimated_person_months"]
+        cumulative_estimated += estimated
+        periods.append({
+            "label": period_label(start, interval),
+            "start": active_start.isoformat(),
+            "end": end.isoformat(),
+            "calendar_months": elapsed,
+            "estimated_person_months": estimated,
+            "full_leverage": estimated / elapsed,
+            "cumulative_estimated_person_months": cumulative_estimated,
+            "cumulative_calendar_months": cumulative_elapsed,
+            "cumulative_leverage": cumulative_estimated / cumulative_elapsed,
+            "commit_count": bucket["commit_count"],
+            "lines_added": bucket["lines_added"],
+            "lines_deleted": bucket["lines_deleted"],
+        })
+    return {
+        "interval": interval,
+        "method": TIMELINE_METHOD,
+        "allocation_basis": "selected-author textual lines added; commits when no text was added",
+        "historical_snapshot": False,
+        "periods": periods,
+    }
+
+
 def calculate(
     camp_filters: list[str],
     seed_emails: set[str],
@@ -697,6 +877,7 @@ def calculate(
     *,
     progress: bool = True,
     jobs: int = DEFAULT_JOBS,
+    timeline_interval: str = "auto",
 ) -> dict[str, Any]:
     camps = json_command("camp", "list", "--format", "json")
     if not isinstance(camps, list):
@@ -769,8 +950,10 @@ def calculate(
     summary = {}
     if rows:
         summary = aggregate(rows)
+        timeline = build_timeline(rows, timeline_interval)
     else:
         errors.append("no selected-author commits in the scored repositories")
+        timeline = None
     return {
         "complete": not errors,
         "camp_count": len(selected),
@@ -781,6 +964,7 @@ def calculate(
         "author_groups": sorted(author_groups),
         "matched_git_identities": matched_pairs,
         "summary": summary,
+        "timeline": timeline,
         "repositories": rows,
         "errors": errors,
         "warnings": warnings,
@@ -825,6 +1009,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--json", action="store_true", help="machine-readable report")
     parser.add_argument(
+        "--timeline", choices=TIMELINE_INTERVALS, default="auto",
+        help="timeline interval: auto, month, quarter, year, or none (default: auto)",
+    )
+    parser.add_argument(
         "--jobs", type=positive_int, default=DEFAULT_JOBS,
         help=f"parallel Git blame workers (default: {DEFAULT_JOBS})",
     )
@@ -855,6 +1043,7 @@ def main() -> int:
         seeds = seed_author_emails(args.author_email, default)
         report = calculate(
             args.camps, seeds, seed_names, progress=not args.json, jobs=args.jobs,
+            timeline_interval=args.timeline,
         )
     except ScanError as exc:
         print(f"camp leverage-all: {exc}", file=sys.stderr)
