@@ -18,9 +18,9 @@ from pathlib import Path
 import pyte
 
 COLUMNS = 96
-ROWS = 38
-PIXEL_WIDTH = 1040
-PIXEL_HEIGHT = 800
+ROWS = 40
+PIXEL_WIDTH = 1160
+PIXEL_HEIGHT = 920
 FIXTURE_ID = "camp-leverage-all-demo-v2"
 
 
@@ -89,6 +89,9 @@ def main() -> int:
     expected = (
         "CAMP LEVERAGE ALL",
         "full leverage",
+        "estimated COCOMO cost (USD)",
+        "COST USD",
+        "CUM. USD",
         "CONTRIBUTION",
         "SCOPE",
         "TIMELINE · MONTH",
@@ -143,7 +146,7 @@ def main() -> int:
         print(f"FAIL: {failure}", file=sys.stderr)
     if failures:
         return 1
-    print("terminal-render: real CLI fits 96x38 with all report sections visible")
+    print("terminal-render: real CLI fits 96x40 with all report sections visible")
     return 0
 
 

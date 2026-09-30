@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
 import shutil
@@ -31,6 +32,8 @@ WORKTREE_DIRS = {"worktrees", ".worktrees", ".camp-worktrees"}
 REQUIRED_COMMANDS = ("camp", "git", "scc")
 VERSION = "0.2.0"
 MINIMUM_SCC_VERSION = (3, 7)
+DEFAULT_ANNUAL_WAGE = 56_286
+DEFAULT_OVERHEAD = 2.4
 DEFAULT_JOBS = max(1, min(8, os.cpu_count() or 1))
 COMMAND_TIMEOUT_SECONDS = 15 * 60
 TIMELINE_INTERVALS = ("auto", "month", "quarter", "year", "none")
@@ -83,6 +86,13 @@ def clipped(value: str, width: int) -> str:
     if len(value) <= width:
         return value
     return value[: max(1, width - 1)] + "…"
+
+
+def dollars(value: float, width: int | None = None) -> str:
+    text = f"${value:,.0f}"
+    if width and len(text) > width:
+        return f"${value:.2e}"
+    return text
 
 
 def display_date(value: str) -> str:
@@ -138,6 +148,17 @@ def render_text_report(
             file=stream,
         )
 
+        print(
+            f"  {style.bold}{style.accent}{dollars(summary['estimated_cost_usd'])}"
+            f"{style.reset}  estimated COCOMO cost (USD)", file=stream,
+        )
+        assumptions = report["cost_model"]
+        print(
+            f"  {style.dim}{dollars(assumptions['annual_wage_usd'])}/year wage"
+            f" · {assumptions['overhead_multiplier']:g}× overhead · organic{style.reset}",
+            file=stream,
+        )
+
         section("CONTRIBUTION")
         if columns >= 78:
             cell_width = (content_width - 2) // 2
@@ -186,18 +207,20 @@ def render_text_report(
             f"  {style.dim}Current owned effort allocated by authored lines added.{style.reset}",
             file=stream,
         )
-        if columns >= 78:
+        if columns >= 96:
             headings = (
                 f"{'PERIOD':<10}  {'ADDED':>11}  {'OUTPUT':>10}"
-                f"  {'RATE':>9}  {'CUMULATIVE':>12}"
+                f"  {'COST USD':>12}  {'RATE':>9}  {'CUMULATIVE':>12}  {'CUM. USD':>12}"
             )
             print(f"  {style.dim}{headings}{style.reset}", file=stream)
             for period in timeline["periods"]:
                 print(
                     f"  {period['label']:<10}  {period['lines_added']:>11,}"
                     f"  {period['estimated_person_months']:>7.1f} PM"
+                    f"  {dollars(period['estimated_cost_usd'], 12):>12}"
                     f"  {style.accent}{period['full_leverage']:>8.1f}×{style.reset}"
-                    f"  {period['cumulative_leverage']:>11.1f}×",
+                    f"  {period['cumulative_leverage']:>11.1f}×"
+                    f"  {dollars(period['cumulative_estimated_cost_usd'], 12):>12}",
                     file=stream,
                 )
         else:
@@ -207,6 +230,11 @@ def render_text_report(
                     f"  {period['estimated_person_months']:.1f} PM"
                     f" {style.dim}·{style.reset} {period['full_leverage']:.1f}× period"
                     f" {style.dim}·{style.reset} {period['cumulative_leverage']:.1f}× cumulative",
+                    file=stream,
+                )
+                print(
+                    f"    {dollars(period['estimated_cost_usd'], 12)} period"
+                    f" · {dollars(period['cumulative_estimated_cost_usd'], 12)} cumulative USD",
                     file=stream,
                 )
 
@@ -696,17 +724,26 @@ def score_checkout(
     checkout: Checkout,
     emails: set[str],
     jobs: int = DEFAULT_JOBS,
+    *,
+    annual_wage: int = DEFAULT_ANNUAL_WAGE,
+    overhead: float = DEFAULT_OVERHEAD,
 ) -> dict[str, Any] | None:
     history = author_history_stats(checkout.git_root, checkout.scan_path, emails)
     if not history["commit_count"]:
         return None
-    args = ["scc", "--format", "json2", "--cocomo-project-type", "organic"]
+    args = [
+        "scc", "--format", "json2", "--cocomo-project-type", "organic",
+        "--avg-wage", str(annual_wage), "--overhead", str(overhead),
+    ]
     for dirname in EXCLUDE_DIRS:
         args.extend(("--exclude-dir", dirname))
     args.append(str(checkout.scan_path))
     result = json_command(*args)
     people = float(result["estimatedPeople"])
     months = float(result["estimatedScheduleMonths"])
+    cost = float(result["estimatedCost"])
+    if not math.isfinite(cost) or cost < 0:
+        raise ScanError("scc returned an invalid estimated cost")
     code_lines = sum(int(language.get("Code", 0)) for language in result.get("languageSummary", []))
     counts = blame_counts(checkout.scan_path, jobs)
     total_lines = sum(counts.values())
@@ -718,6 +755,8 @@ def score_checkout(
         "path": str(checkout.scan_path),
         "estimated_person_months": people * months * share,
         "unscaled_estimated_person_months": people * months,
+        "estimated_cost_usd": cost * share,
+        "unscaled_estimated_cost_usd": cost,
         "author_share": share,
         "owned_lines": owned_lines,
         "estimated_owned_code_lines": round(code_lines * share),
@@ -739,6 +778,7 @@ def aggregate(rows: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "full_leverage": estimated / actual,
         "estimated_person_months": estimated,
+        "estimated_cost_usd": sum(row["estimated_cost_usd"] for row in rows),
         "actual_person_months": actual,
         "first_commit": first.isoformat(),
         "last_commit": last.isoformat(),
@@ -807,6 +847,7 @@ def build_timeline(rows: list[dict[str, Any]], requested: str = "auto") -> dict[
             "lines_added": 0,
             "lines_deleted": 0,
             "estimated_person_months": 0.0,
+            "estimated_cost_usd": 0.0,
         }
         for start in starts
     }
@@ -834,9 +875,11 @@ def build_timeline(rows: list[dict[str, Any]], requested: str = "auto") -> dict[
             bucket["estimated_person_months"] += (
                 row["estimated_person_months"] * weight / denominator
             )
+            bucket["estimated_cost_usd"] += row["estimated_cost_usd"] * weight / denominator
 
     periods = []
     cumulative_estimated = 0.0
+    cumulative_cost = 0.0
     for start in starts:
         end = min(next_period(start, interval), last)
         active_start = max(start, first)
@@ -847,12 +890,15 @@ def build_timeline(rows: list[dict[str, Any]], requested: str = "auto") -> dict[
         bucket = buckets[start]
         estimated = bucket["estimated_person_months"]
         cumulative_estimated += estimated
+        cumulative_cost += bucket["estimated_cost_usd"]
         periods.append({
             "label": period_label(start, interval),
             "start": active_start.isoformat(),
             "end": end.isoformat(),
             "calendar_months": elapsed,
             "estimated_person_months": estimated,
+            "estimated_cost_usd": bucket["estimated_cost_usd"],
+            "cumulative_estimated_cost_usd": cumulative_cost,
             "full_leverage": estimated / elapsed,
             "cumulative_estimated_person_months": cumulative_estimated,
             "cumulative_calendar_months": cumulative_elapsed,
@@ -878,6 +924,8 @@ def calculate(
     progress: bool = True,
     jobs: int = DEFAULT_JOBS,
     timeline_interval: str = "auto",
+    annual_wage: int = DEFAULT_ANNUAL_WAGE,
+    overhead: float = DEFAULT_OVERHEAD,
 ) -> dict[str, Any]:
     camps = json_command("camp", "list", "--format", "json")
     if not isinstance(camps, list):
@@ -937,7 +985,9 @@ def calculate(
         if progress:
             print(f"Scoring {index}/{len(chosen)}: {checkout.project}", file=sys.stderr)
         try:
-            scored = score_checkout(checkout, emails, jobs)
+            scored = score_checkout(
+                checkout, emails, jobs, annual_wage=annual_wage, overhead=overhead,
+            )
         except (ScanError, KeyError, ValueError, TypeError) as exc:
             errors.append(f"{checkout.key}: {exc}")
             continue
@@ -963,6 +1013,11 @@ def calculate(
         "author_names": sorted(names),
         "author_groups": sorted(author_groups),
         "matched_git_identities": matched_pairs,
+        "cost_model": {
+            "currency": "USD", "project_type": "organic",
+            "annual_wage_usd": annual_wage, "overhead_multiplier": overhead,
+            "source": "scc.estimatedCost",
+        },
         "summary": summary,
         "timeline": timeline,
         "repositories": rows,
@@ -975,6 +1030,13 @@ def positive_int(value: str) -> int:
     parsed = int(value)
     if parsed < 1:
         raise argparse.ArgumentTypeError("must be at least 1")
+    return parsed
+
+
+def positive_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed) or parsed <= 0:
+        raise argparse.ArgumentTypeError("must be a finite number greater than zero")
     return parsed
 
 
@@ -1008,6 +1070,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="exact Git author name or Camp author-group name (repeatable)",
     )
     parser.add_argument("--json", action="store_true", help="machine-readable report")
+    parser.add_argument(
+        "--annual-wage", type=positive_int, default=DEFAULT_ANNUAL_WAGE,
+        help=f"annual wage in USD for COCOMO cost (default: {DEFAULT_ANNUAL_WAGE})",
+    )
+    parser.add_argument(
+        "--overhead", type=positive_float, default=DEFAULT_OVERHEAD,
+        help=f"COCOMO cost overhead multiplier (default: {DEFAULT_OVERHEAD})",
+    )
     parser.add_argument(
         "--timeline", choices=TIMELINE_INTERVALS, default="auto",
         help="timeline interval: auto, month, quarter, year, or none (default: auto)",
@@ -1044,6 +1114,7 @@ def main() -> int:
         report = calculate(
             args.camps, seeds, seed_names, progress=not args.json, jobs=args.jobs,
             timeline_interval=args.timeline,
+            annual_wage=args.annual_wage, overhead=args.overhead,
         )
     except ScanError as exc:
         print(f"camp leverage-all: {exc}", file=sys.stderr)

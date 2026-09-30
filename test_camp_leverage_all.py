@@ -3,6 +3,7 @@ import io
 import subprocess
 import tomllib
 import unittest
+from collections import Counter
 from pathlib import Path
 from unittest.mock import patch
 
@@ -25,9 +26,12 @@ class LeverageTests(unittest.TestCase):
             "author_names": ["automation-agent"],
             "author_groups": ["automation-agent", "developer"],
             "matched_git_identities": [],
+            "cost_model": {
+                "annual_wage_usd": 56_286, "overhead_multiplier": 2.4,
+            },
             "summary": {
                 "full_leverage": 12.5,
-                "estimated_person_months": 50.0,
+                "estimated_person_months": 50.0, "estimated_cost_usd": 562_800.0,
                 "actual_person_months": 4.0,
                 "first_commit": "2026-01-01T00:00:00+00:00",
                 "last_commit": "2026-05-01T00:00:00+00:00",
@@ -43,14 +47,15 @@ class LeverageTests(unittest.TestCase):
                 "periods": [{
                     "label": "2026 Q1",
                     "lines_added": 4_321,
-                    "estimated_person_months": 20.0,
+                    "estimated_person_months": 20.0, "estimated_cost_usd": 225_120.0,
+                    "cumulative_estimated_cost_usd": 225_120.0,
                     "full_leverage": 6.7,
                     "cumulative_leverage": 6.7,
                 }],
             },
             "repositories": [{
                 "repository": "remote:github.com/example/shared-platform",
-                "estimated_person_months": 50.0,
+                "estimated_person_months": 50.0, "estimated_cost_usd": 562_800.0,
                 "camps": ["Client Work", "Studio"],
                 "dirty": False,
                 "weak_identity": False,
@@ -183,22 +188,23 @@ class LeverageTests(unittest.TestCase):
 
     def test_aggregate_unions_calendar_span_instead_of_summing_repo_effort(self):
         rows = [
-            {"estimated_person_months": 12, "first_commit": "2026-01-01T00:00:00+00:00", "last_commit": "2026-02-01T00:00:00+00:00"},
-            {"estimated_person_months": 18, "first_commit": "2026-01-15T00:00:00+00:00", "last_commit": "2026-03-01T00:00:00+00:00"},
+            {"estimated_person_months": 12, "estimated_cost_usd": 135072.0, "first_commit": "2026-01-01T00:00:00+00:00", "last_commit": "2026-02-01T00:00:00+00:00"},
+            {"estimated_person_months": 18, "estimated_cost_usd": 202608.0, "first_commit": "2026-01-15T00:00:00+00:00", "last_commit": "2026-03-01T00:00:00+00:00"},
         ]
         result = leverage.aggregate(rows)
         self.assertAlmostEqual(result["estimated_person_months"], 30)
+        self.assertEqual(result["estimated_cost_usd"], 337_680.0)
         self.assertAlmostEqual(result["actual_person_months"], 59 / 30.44)
         self.assertAlmostEqual(result["full_leverage"], 30 / (59 / 30.44))
 
     def test_aggregate_ratio_can_be_lower_than_a_single_camp_ratio(self):
         recent = {
-            "estimated_person_months": 100,
+            "estimated_person_months": 100, "estimated_cost_usd": 1125600.0,
             "first_commit": "2026-02-01T00:00:00+00:00",
             "last_commit": "2026-03-01T00:00:00+00:00",
         }
         older = {
-            "estimated_person_months": 10,
+            "estimated_person_months": 10, "estimated_cost_usd": 112560.0,
             "first_commit": "2025-03-01T00:00:00+00:00",
             "last_commit": "2025-04-01T00:00:00+00:00",
         }
@@ -209,7 +215,7 @@ class LeverageTests(unittest.TestCase):
 
     def test_timeline_allocates_effort_and_ends_at_full_score(self):
         rows = [{
-            "estimated_person_months": 120.0,
+            "estimated_person_months": 120.0, "estimated_cost_usd": 1350720.0,
             "first_commit": "2025-01-15T00:00:00+00:00",
             "last_commit": "2026-04-15T00:00:00+00:00",
             "commit_count": 3,
@@ -222,6 +228,15 @@ class LeverageTests(unittest.TestCase):
             ],
         }]
         timeline = leverage.build_timeline(rows)
+        self.assertAlmostEqual(
+            sum(period["estimated_cost_usd"] for period in timeline["periods"]),
+            leverage.aggregate(rows)["estimated_cost_usd"],
+        )
+        self.assertAlmostEqual(
+            timeline["periods"][-1]["cumulative_estimated_cost_usd"],
+            leverage.aggregate(rows)["estimated_cost_usd"],
+        )
+        self.assertEqual(timeline["periods"][1]["estimated_cost_usd"], 0.0)
         self.assertEqual(timeline["interval"], "month")
         self.assertFalse(timeline["historical_snapshot"])
         self.assertAlmostEqual(
@@ -241,7 +256,7 @@ class LeverageTests(unittest.TestCase):
 
     def test_timeline_can_be_disabled(self):
         self.assertIsNone(leverage.build_timeline([{
-            "estimated_person_months": 1.0,
+            "estimated_person_months": 1.0, "estimated_cost_usd": 11256.0,
             "first_commit": "2026-01-01T00:00:00+00:00",
             "last_commit": "2026-02-01T00:00:00+00:00",
         }], "none"))
@@ -307,6 +322,7 @@ class LeverageTests(unittest.TestCase):
             patch.object(leverage, "author_history_stats", return_value=history),
             patch.object(leverage, "json_command", return_value={
                 "estimatedPeople": 4,
+                "estimatedCost": 225_120.0,
                 "estimatedScheduleMonths": 5,
                 "languageSummary": [{"Code": 80}],
             }),
@@ -315,6 +331,8 @@ class LeverageTests(unittest.TestCase):
         ):
             row = leverage.score_checkout(checkout, {"me@example.com"})
         self.assertAlmostEqual(row["estimated_person_months"], 5)
+        self.assertEqual(row["estimated_cost_usd"], 56_280.0)
+        self.assertEqual(row["unscaled_estimated_cost_usd"], 225_120.0)
         self.assertAlmostEqual(row["author_share"], .25)
         self.assertEqual(row["estimated_owned_code_lines"], 20)
         self.assertEqual(row["lines_added"], 30)
@@ -344,6 +362,67 @@ class LeverageTests(unittest.TestCase):
         ), self.assertRaisesRegex(leverage.ScanError, "git timed out"):
             leverage.command("git", "status")
 
+    def test_cost_options_reject_invalid_values(self):
+        parser = leverage.build_parser()
+        for flag, values in (
+            ("--annual-wage", ("0", "-1", "1.5", "NaN")),
+            ("--overhead", ("0", "-1", "NaN", "inf", "-inf")),
+        ):
+            for value in values:
+                with self.subTest(flag=flag, value=value), patch("sys.stderr", io.StringIO()):
+                    with self.assertRaises(SystemExit) as exc:
+                        parser.parse_args([f"{flag}={value}"])
+                    self.assertEqual(exc.exception.code, 2)
+        args = parser.parse_args(["--annual-wage", "120000", "--overhead", "1.5"])
+        self.assertEqual(args.annual_wage, 120000)
+        self.assertEqual(args.overhead, 1.5)
+
+    def test_invalid_scc_cost_does_not_become_a_plausible_total(self):
+        for value in (-1, float("nan"), float("inf")):
+            with (
+                self.subTest(value=value),
+                patch.object(leverage, "author_history_stats", return_value={"commit_count": 1}),
+                patch.object(leverage, "json_command", return_value={
+                    "estimatedPeople": 1, "estimatedScheduleMonths": 1, "estimatedCost": value,
+                }),
+                self.assertRaisesRegex(leverage.ScanError, "invalid estimated cost"),
+            ):
+                leverage.score_checkout(self.checkout("key", "/repo", "camp"), {"me@example.com"})
+
+    def test_custom_cost_assumptions_are_passed_to_scc_and_scaled_by_ownership(self):
+        with (
+            patch.object(leverage, "author_history_stats", return_value={"commit_count": 1}),
+            patch.object(leverage, "json_command", return_value={
+                "estimatedPeople": 1, "estimatedScheduleMonths": 1, "estimatedCost": 15000,
+            }) as scc,
+            patch.object(leverage, "blame_counts", return_value=Counter({
+                "me@example.com": 1, "other@example.com": 3,
+            })),
+            patch.object(leverage, "command", return_value=""),
+        ):
+            row = leverage.score_checkout(
+                self.checkout("key", "/repo", "camp"), {"me@example.com"},
+                annual_wage=120000, overhead=1.5,
+            )
+        self.assertEqual(row["estimated_cost_usd"], 3750)
+        argv = scc.call_args.args
+        self.assertEqual(argv[argv.index("--avg-wage") + 1], "120000")
+        self.assertEqual(argv[argv.index("--overhead") + 1], "1.5")
+
+    def test_cost_timeline_falls_back_to_commits_when_no_lines_were_added(self):
+        row = {
+            "estimated_person_months": 3, "estimated_cost_usd": 30000,
+            "first_commit": "2026-01-01T00:00:00+00:00",
+            "last_commit": "2026-03-01T00:00:00+00:00",
+            "activity": [
+                {"month": "2026-01", "commit_count": 1},
+                {"month": "2026-03", "commit_count": 2},
+            ],
+        }
+        periods = leverage.build_timeline([row])["periods"]
+        self.assertEqual([p["estimated_cost_usd"] for p in periods], [10000, 0, 20000])
+        self.assertEqual(periods[-1]["cumulative_estimated_cost_usd"], 30000)
+
     def test_scc_minimum_version_is_enforced(self):
         with (
             patch.object(leverage, "command", return_value="scc version 3.6.0"),
@@ -371,6 +450,10 @@ class LeverageTests(unittest.TestCase):
         self.assertIn("CAMP LEVERAGE ALL", rendered)
         self.assertIn("12.5×  full leverage", rendered)
         self.assertIn("CONTRIBUTION", rendered)
+        self.assertIn("$562,800  estimated COCOMO cost (USD)", rendered)
+        self.assertIn("COST USD", rendered)
+        self.assertIn("CUM. USD", rendered)
+        self.assertIn("$225,120", rendered)
         self.assertIn("TIMELINE · QUARTER", rendered)
         self.assertIn("2026 Q1", rendered)
         self.assertIn("REPOSITORY", rendered)
@@ -387,6 +470,7 @@ class LeverageTests(unittest.TestCase):
         )
         rendered = output.getvalue()
         self.assertNotIn("EFFORT", rendered)
+        self.assertIn("$225,120 period · $225,120 cumulative USD", rendered)
         self.assertIn("github.com/example/shared-platform\n    50.0 PM · Client Work, Studio", rendered)
         self.assertLessEqual(max(map(len, rendered.splitlines())), 58)
 

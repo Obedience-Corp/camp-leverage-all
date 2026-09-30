@@ -136,12 +136,27 @@ The report includes these measures of your work:
 
 - **Current ownership:** lines currently attributed to your email addresses by `git blame`, plus your proportional share of `scc`'s current code count and COCOMO estimate.
 - **Lifetime production:** commits and textual lines added or deleted by those email addresses across all branches.
+- **Estimated COCOMO cost (USD):** the sum of each unique repository’s `scc` cost estimate, scaled to your share of current ownership. The headline and timeline include this dollar estimate.
 - **Full leverage:** your share of COCOMO-estimated project effort divided by the calendar span between your first and last matching commits.
 - **Timeline:** the same current, deduplicated personal effort allocated to periods according to authored textual lines added, with commits used when a repository has no textual additions. Each row shows that period's allocated output and rate plus the cumulative rate through that period.
 
 Repository identities come from normalized Git remotes. SSH aliases, SSH URLs, and HTTPS URLs for the same remote collapse to one repository. Camp worktree directories are excluded, and duplicate checkouts report all of their Camp memberships. See [SPEC.md](SPEC.md) for the complete selection and calculation rules.
 
 This is a comparative engineering metric for personal tracking. It is not a valuation, a productivity target, or a measure of hours worked.
+
+### Estimated dollar cost
+
+The headline dollar total estimates the development cost of your share of the current code, using the organic COCOMO model. It uses the same selected authors and deduplicated repositories as the leverage score. Shared repos and worktrees cannot add their cost twice.
+
+Defaults match `scc`: **$56,286 annual wage and 2.4× overhead**. Both assumptions appear below the total. Set your own assumptions with:
+
+```sh
+camp leverage-all --annual-wage 120000 --overhead 2.4
+```
+
+The plugin reads `scc.estimatedCost` directly and multiplies it by your ownership share. `scc` 3.7 computes cost as estimated person-months × truncated monthly wage × overhead; its default monthly wage is $4,690. This is a model estimate of development cost, not revenue, market value, or actual money spent. Changing wage or overhead changes dollars without changing leverage, LOC, or author ownership.
+
+JSON records the assumptions in `cost_model`, the total in `summary.estimated_cost_usd`, and each repository’s personal and whole-repo estimates in `estimated_cost_usd` and `unscaled_estimated_cost_usd`. Values retain full precision in JSON; terminal dollars are rounded for display.
 
 ### Why can one Camp score higher than all Camps?
 
@@ -165,18 +180,22 @@ Run `camp leverage-all` to see the timeline in the default report. Use `camp lev
 | `PERIOD` | Calendar month, quarter, or year. |
 | `ADDED` | Selected authors' textual lines added during that period, across deduplicated repositories. |
 | `OUTPUT` | Current estimated effort allocated to that period, in person-months (`PM`). |
+| `COST USD` | Current estimated cost allocated to that period using the same weights as `OUTPUT`. |
+| `CUM. USD` | Allocated cost through that period. Its final value equals the headline dollar total. |
 | `RATE` | That period's allocated output divided by its calendar duration in months. |
 | `CUMULATIVE` | Output allocated through that period divided by the calendar span since the first matching commit. Its final value equals the headline score. |
 
+On narrower terminals, period and cumulative dollars appear on a second line for each period.
+
 Use `RATE` to compare the estimated pace between periods. `CUMULATIVE` includes the earlier history, so a recent period can have a high rate while the cumulative average stays much lower. First and last periods cover only the portion within the matching commit span; durations use a minimum of 0.1 month. Period boundaries are in UTC.
 
-**These are allocated estimates, not measured historical scores.** For each repository, the tool distributes today's author-owned COCOMO effort among periods in proportion to the selected authors' textual lines added. It uses commit counts when that repository has no textual additions. It does not check out historical versions or recompute past code size and ownership. Consequently, changes to today's code or ownership can change earlier timeline estimates on a later run.
+**These are allocated estimates, not measured historical scores.** For each repository, the tool distributes today's author-owned COCOMO effort and cost among periods in proportion to the selected authors' textual lines added. It uses commit counts when that repository has no textual additions. It does not check out historical versions or recompute past code size and ownership. Consequently, changes to today's code or ownership can change earlier timeline estimates on a later run.
 
 Historical scores would require reconstructing and measuring repository snapshots at each period boundary. That mode is not implemented. JSON makes the current method explicit with `historical_snapshot: false`.
 
 ## Output and exit status
 
-The text report includes the aggregate score, contribution totals, timeline, author identities, Camp and repository counts, and each scored repository. Dirty repositories and repos without a remote are labeled because they weaken reproducibility.
+The text report includes the aggregate score, estimated dollar cost and its assumptions, contribution totals, timeline, author identities, Camp and repository counts, and each scored repository. Dirty repositories and repos without a remote are labeled because they weaken reproducibility.
 
 JSON output contains the same aggregate, timeline method and periods, and per-repository evidence. Local checkout paths and author email addresses are included, so review the file before publishing it.
 
