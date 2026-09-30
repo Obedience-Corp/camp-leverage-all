@@ -73,8 +73,17 @@ CAMP_ROOT="$fixture/camp-a" PATH="$bin_dir:$PATH" camp leverage-all \
     --author-email developer@example.com \
     --json > "$fixture/report.json"
 
+CAMP_ROOT="$fixture/camp-a" PATH="$bin_dir:$PATH" camp leverage-all \
+    --author-email developer@example.com --annual-wage 120000 --overhead 1.5 \
+    --json > "$fixture/custom-cost.json"
+CAMP_ROOT="$fixture/camp-a" PATH="$bin_dir:$PATH" camp leverage-all \
+    --author-email developer@example.com --camp camp-a --json > "$fixture/single-camp.json"
+scc --format json2 --cocomo-project-type organic --avg-wage 120000 --overhead 1.5 \
+    "$fixture/checkout-b" > "$fixture/scc.json"
+
 python - "$fixture/report.json" <<'PY'
 import json
+import math
 from pathlib import Path
 import sys
 
@@ -89,5 +98,22 @@ assert report["repositories"][0]["commit_count"] == 1
 assert report["summary"]["full_leverage"] > 0
 assert report["timeline"]["historical_snapshot"] is False
 assert report["timeline"]["periods"][-1]["cumulative_leverage"] == report["summary"]["full_leverage"]
+summary = report["summary"]
+assert summary["estimated_cost_usd"] > 0
+assert math.isclose(summary["estimated_cost_usd"], report["repositories"][0]["estimated_cost_usd"])
+assert math.isclose(summary["estimated_cost_usd"], sum(
+    p["estimated_cost_usd"] for p in report["timeline"]["periods"]
+))
+assert math.isclose(summary["estimated_cost_usd"],
+                    report["timeline"]["periods"][-1]["cumulative_estimated_cost_usd"])
+custom = json.loads(Path("/fixture/custom-cost.json").read_text())
+single = json.loads(Path("/fixture/single-camp.json").read_text())
+scc = json.loads(Path("/fixture/scc.json").read_text())
+assert math.isclose(summary["estimated_cost_usd"], single["summary"]["estimated_cost_usd"])
+assert math.isclose(custom["summary"]["estimated_cost_usd"], scc["estimatedCost"])
+assert custom["summary"]["full_leverage"] == summary["full_leverage"]
+assert custom["cost_model"]["annual_wage_usd"] == 120000
+assert custom["cost_model"]["overhead_multiplier"] == 1.5
+print("integration: cost matches scc, counted once, custom assumptions preserve leverage")
 print("integration: duplicate remote scored once across two Camps")
 PY

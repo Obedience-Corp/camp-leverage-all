@@ -3,8 +3,8 @@ Output "out/vhs/camp-leverage-all/raw.gif"
 Set Shell "bash"
 Set FontFamily "JetBrainsMono Nerd Font"
 Set FontSize 18
-Set Width 1040
-Set Height 800
+Set Width 1160
+Set Height 920
 Set Padding 22
 Set Margin 0
 Set BorderRadius 0
