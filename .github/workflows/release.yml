@@ -45,7 +45,7 @@ jobs:
       - name: Build macOS archive with bundled Python and scc
         if: runner.os == 'macOS'
         run: |
-          brew install python@3.11
+          brew install --skip-link python@3.11
           "$(brew --prefix python@3.11)/bin/python3.11" -m venv build/release-venv
           build/release-venv/bin/python -m pip install -r scripts/release/requirements.txt
           bash scripts/release/build-scc.sh

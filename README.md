@@ -9,10 +9,10 @@
 </p>
 
 <p align="center">
-  <a href="https://gist.github.com/lancekrogers/2b93401425db6daaeba3b6f36849a9bf"><img src="https://gist.githubusercontent.com/lancekrogers/2b93401425db6daaeba3b6f36849a9bf/raw/camp-leverage-all-terminal.gif" width="960" alt="Camp Leverage All terminal report showing a deduplicated score, contribution metrics, timeline, repositories, and identities"></a>
+  <a href="https://gist.github.com/lancekrogers/aef8af6ab81b974660c262d80326eeeb"><img src="https://gist.githubusercontent.com/lancekrogers/aef8af6ab81b974660c262d80326eeeb/raw/camp-leverage-all-030.gif" width="960" alt="Camp Leverage All terminal report showing COCOMO effort and dollars in the headline, timeline, and repository breakdown"></a>
 </p>
 
-<p align="center"><em>Recorded from the real CLI with two sanitized Camps; the shared repository is counted once and the cumulative timeline ends at the headline score.</em></p>
+<p align="center"><em>Recorded from the real CLI with two sanitized Camps; the shared repository is counted once and the cumulative timeline ends at the headline score and dollar total.</em></p>
 
 Camp Leverage All is an experimental Python plugin for Camp. It discovers registered Camps and projects, joins your configured Git identities, and calculates one personal leverage score with each repository counted once across checkouts and worktrees.
 
