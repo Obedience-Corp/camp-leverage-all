@@ -34,12 +34,22 @@ brew install scc
 festival doctor
 ```
 
-Then install the plugin with [`uv`](https://docs.astral.sh/uv/getting-started/installation/) and run it through Camp:
+Install the plugin through the **Festival TUI**:
+
+> The first marketplace release is being prepared. These steps apply once Camp Leverage All appears in the official catalog.
+
+1. Run `festival` to open the TUI.
+2. Open **Browse catalog** and select `obedience-corp/camp-leverage-all`.
+3. Press **Enter** to install it and wait for **Install complete**.
+4. Quit Festival and run the plugin through Camp:
 
 ```sh
-uv tool install git+https://github.com/Obedience-Corp/camp-leverage-all.git
 camp leverage-all
 ```
+
+![Festival TUI installs Camp Leverage All from a local preview catalog, then Camp reports version 0.2.0](https://gist.githubusercontent.com/lancekrogers/c4312b72b97d06f9c07ab8bd8bd4d767/raw/camp-leverage-all-festival-install-preview.gif)
+
+*Installation preview recorded with the real Festival TUI and a disposable local catalog. The visible unsigned-content warnings belong to that fixture. The official marketplace release is pending; this recording does not verify its availability or signatures.*
 
 That first report scans every registered Camp, combines your configured Git identities, and counts each repository once. **The timeline table is included by default; no extra flag is needed.** It shows estimated period rates and a cumulative average. See [Reading the timeline](#reading-the-timeline) for the column definitions and how those estimates are calculated.
 
@@ -59,28 +69,6 @@ For npm, pnpm, bun, Linux packages, or release archives, install Festival using 
 Camp Leverage All works for any Festival user with one or more Camps registered on the machine. It has no built-in author names, email addresses, Camp names, or filesystem paths.
 
 By default, it starts with `git config user.email`. If a Camp has `.campaign/leverage/authors.json`, matching identity groups expand that email to the user's other personal, work, bot, or agent addresses. Users without an author file still get a report for their configured Git email. The repeatable `--author-email` and `--author-name` options cover additional identities without changing Camp state.
-
-## Install alternatives
-
-Until the first PyPI release, installation comes directly from GitHub. If your GitHub access uses SSH:
-
-```sh
-uv tool install git+ssh://git@github.com/Obedience-Corp/camp-leverage-all.git
-```
-
-`pipx` also works:
-
-```sh
-pipx install git+https://github.com/Obedience-Corp/camp-leverage-all.git
-```
-
-Contributors working from a clone can run:
-
-```sh
-uv tool install --editable .
-```
-
-The package installs one plugin executable: `camp-leverage-all`.
 
 ## Use
 
@@ -207,6 +195,14 @@ The process exits:
 A partial scan may still print measured rows, but it is labeled incomplete and exits `2` so automation cannot mistake it for the full result.
 
 ## Develop
+
+Source installation is for contributors. From a clone, install an editable copy with [`uv`](https://docs.astral.sh/uv/getting-started/installation/):
+
+```sh
+uv tool install --editable .
+```
+
+This installs the `camp-leverage-all` executable for development. Users should install the published plugin through the Festival TUI above.
 
 From a Camp workspace, `cgo leverage-all` navigates to this project; it does not calculate a report. Then run:
 
