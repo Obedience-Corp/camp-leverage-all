@@ -30,7 +30,7 @@ MIN_AUTHOR_MONTHS = 0.1
 SECONDS_PER_MONTH = 30.44 * 24 * 60 * 60
 WORKTREE_DIRS = {"worktrees", ".worktrees", ".camp-worktrees"}
 REQUIRED_COMMANDS = ("camp", "git", "scc")
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 MINIMUM_SCC_VERSION = (3, 7)
 DEFAULT_ANNUAL_WAGE = 56_286
 DEFAULT_OVERHEAD = 2.4
@@ -242,11 +242,15 @@ def render_text_report(
         section("REPOSITORIES")
         if columns >= 78:
             effort_width = 9
-            camp_width = 22
+            cost_width = 12
+            camp_width = min(22, max(14, columns - 82))
             status_width = 8
-            repo_width = content_width - effort_width - camp_width - status_width - 6
+            repo_width = (
+                content_width - effort_width - cost_width - camp_width - status_width - 8
+            )
             headings = (
                 f"{'REPOSITORY':<{repo_width}}  {'EFFORT':>{effort_width}}"
+                f"  {'COST USD':>{cost_width}}"
                 f"  {'CAMPS':<{camp_width}}  {'STATUS':<{status_width}}"
             )
             print(f"  {style.dim}{headings}{style.reset}", file=stream)
@@ -263,6 +267,7 @@ def render_text_report(
                 print(
                     f"  {style.accent}{repository:<{repo_width}}{style.reset}"
                     f"  {row['estimated_person_months']:>{effort_width - 3}.1f} PM"
+                    f"  {dollars(row['estimated_cost_usd'], cost_width):>{cost_width}}"
                     f"  {camps:<{camp_width}}"
                     f"  {status_color}{status}{style.reset}",
                     file=stream,
@@ -280,7 +285,11 @@ def render_text_report(
                 print(f"  {style.accent}{repository}{style.reset}", file=stream)
                 print(
                     f"    {row['estimated_person_months']:.1f} PM"
-                    f" {style.dim}·{style.reset} {camps}{suffix}",
+                    f" {style.dim}·{style.reset} {dollars(row['estimated_cost_usd'], 12)} USD",
+                    file=stream,
+                )
+                print(
+                    f"    {camps}{suffix}",
                     file=stream,
                 )
 
@@ -311,6 +320,28 @@ def render_text_report(
         )
 
 
+def command_environment(overrides: dict[str, str] | None = None) -> dict[str, str]:
+    """Keep the frozen Python runtime's libraries out of external processes."""
+    environment = dict(os.environ)
+    if getattr(sys, "frozen", False):
+        for variable in ("LD_LIBRARY_PATH", "LIBPATH"):
+            original = environment.get(f"{variable}_ORIG")
+            if original is None:
+                environment.pop(variable, None)
+            else:
+                environment[variable] = original
+    environment.update(overrides or {})
+    return environment
+
+
+def scc_executable() -> str:
+    # PyInstaller expands this private helper beside the bundled Python module.
+    # Source/wheel installations continue to use the user's scc from PATH.
+    if getattr(sys, "frozen", False):
+        return str(Path(__file__).resolve().parent / "helpers" / "scc")
+    return "scc"
+
+
 def command(
     *args: str,
     cwd: Path | None = None,
@@ -319,12 +350,12 @@ def command(
 ) -> str:
     try:
         result = subprocess.run(
-            args,
+            (scc_executable(), *args[1:]) if args[0] == "scc" else args,
             cwd=cwd,
             capture_output=True,
             text=True,
             check=False,
-            env={**os.environ, **environment} if environment else None,
+            env=command_environment(environment),
             timeout=COMMAND_TIMEOUT_SECONDS,
         )
     except subprocess.TimeoutExpired as exc:
@@ -667,6 +698,7 @@ def blame_counts(scan_path: Path, jobs: int = DEFAULT_JOBS) -> Counter[str]:
         raw = subprocess.run(
             ("git", "ls-files", "-z"),
             cwd=scan_path,
+            env=command_environment(),
             capture_output=True,
             check=False,
             timeout=COMMAND_TIMEOUT_SECONDS,
@@ -694,6 +726,7 @@ def blame_counts(scan_path: Path, jobs: int = DEFAULT_JOBS) -> Counter[str]:
             result = subprocess.run(
                 ("git", "blame", "--line-porcelain", "--", file),
                 cwd=scan_path,
+                env=command_environment(),
                 capture_output=True,
                 check=False,
                 timeout=COMMAND_TIMEOUT_SECONDS,
@@ -1041,7 +1074,10 @@ def positive_float(value: str) -> float:
 
 
 def missing_commands() -> list[str]:
-    return [name for name in REQUIRED_COMMANDS if shutil.which(name) is None]
+    return [
+        name for name in REQUIRED_COMMANDS
+        if shutil.which(scc_executable() if name == "scc" else name) is None
+    ]
 
 
 def validate_scc_version() -> None:

@@ -15,6 +15,9 @@ ruff check .
 python3 -m build
 docker build -f tests/integration/Dockerfile -t camp-leverage-all-integration .
 docker run --rm --network none camp-leverage-all-integration
+docker run --rm --network none --entrypoint python camp-leverage-all-integration /app/tests/terminal/render_pty.py
+docker build -f tests/release/Dockerfile -t camp-leverage-all-release-test .
+docker run --rm --network none camp-leverage-all-release-test
 ```
 
 A behavior change should include a test for its reachable success or failure path. Tests that create, delete, or rewrite repositories must run in containerized isolation.

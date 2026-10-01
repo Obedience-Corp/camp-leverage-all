@@ -6,5 +6,5 @@ include test_camp_leverage_all.py
 recursive-include .github *.yml
 recursive-include tests *.sh Dockerfile
 recursive-include tests *.py
-recursive-include scripts *.sh
-recursive-include docs/demos *.tape
+recursive-include scripts *.sh *.py *.txt
+recursive-include docs *.tape *.md

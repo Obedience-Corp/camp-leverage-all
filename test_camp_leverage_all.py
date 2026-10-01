@@ -432,6 +432,24 @@ class LeverageTests(unittest.TestCase):
         with patch.object(leverage, "command", return_value="scc version 4.0.1"):
             leverage.validate_scc_version()
 
+    def test_frozen_commands_restore_external_library_environment(self):
+        with (
+            patch.object(leverage.sys, "frozen", True, create=True),
+            patch.dict(leverage.os.environ, {
+                "LD_LIBRARY_PATH": "/bundle", "LD_LIBRARY_PATH_ORIG": "/system",
+                "LIBPATH": "/bundle", "CAMP_ROOT": "/invoking-camp",
+            }, clear=True),
+        ):
+            environment = leverage.command_environment({"CAMP_ROOT": "/selected-camp"})
+            self.assertEqual(environment["LD_LIBRARY_PATH"], "/system")
+            self.assertNotIn("LIBPATH", environment)
+            self.assertEqual(environment["CAMP_ROOT"], "/selected-camp")
+            self.assertEqual(leverage.os.environ["LD_LIBRARY_PATH"], "/bundle")
+
+    def test_source_commands_preserve_user_library_environment(self):
+        with patch.dict(leverage.os.environ, {"LD_LIBRARY_PATH": "/user"}, clear=True):
+            self.assertEqual(leverage.command_environment()["LD_LIBRARY_PATH"], "/user")
+
     def test_package_and_cli_versions_match(self):
         metadata = tomllib.loads(Path(__file__).with_name("pyproject.toml").read_text())
         self.assertEqual(metadata["project"]["version"], leverage.VERSION)
@@ -457,6 +475,9 @@ class LeverageTests(unittest.TestCase):
         self.assertIn("TIMELINE · QUARTER", rendered)
         self.assertIn("2026 Q1", rendered)
         self.assertIn("REPOSITORY", rendered)
+        repositories = rendered.split("REPOSITORIES", 1)[1].split("IDENTITY", 1)[0]
+        self.assertIn("COST USD", repositories)
+        self.assertIn("$562,800", repositories)
         self.assertIn("github.com/example/shared-platform", rendered)
         self.assertNotIn("remote:", rendered)
         self.assertNotIn("\033[", rendered)
@@ -471,7 +492,7 @@ class LeverageTests(unittest.TestCase):
         rendered = output.getvalue()
         self.assertNotIn("EFFORT", rendered)
         self.assertIn("$225,120 period · $225,120 cumulative USD", rendered)
-        self.assertIn("github.com/example/shared-platform\n    50.0 PM · Client Work, Studio", rendered)
+        self.assertIn("github.com/example/shared-platform\n    50.0 PM · $562,800 USD\n    Client Work, Studio", rendered)
         self.assertLessEqual(max(map(len, rendered.splitlines())), 58)
 
     def test_forced_color_uses_brand_palette(self):

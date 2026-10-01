@@ -106,6 +106,9 @@ def main() -> int:
     )
     missing = [text for text in expected if text not in rendered]
     failures = []
+    repositories = rendered.split("REPOSITORIES", 1)[-1].split("IDENTITY", 1)[0]
+    if "COST USD" not in repositories or "$" not in repositories:
+        failures.append("repository dollar estimates missing from terminal")
     if missing:
         failures.append("missing rendered text: " + ", ".join(missing))
     if "/tmp/" in rendered or "/private/" in rendered or "/Users/" in rendered:
