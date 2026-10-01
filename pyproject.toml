@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "camp-leverage-all"
-version = "0.2.0"
+version = "0.3.0"
 description = "Aggregate personal leverage across registered Camps without double-counting repositories"
 readme = "README.md"
 requires-python = ">=3.11"

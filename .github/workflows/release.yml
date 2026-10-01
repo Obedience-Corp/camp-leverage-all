@@ -1,0 +1,103 @@
+name: Release packages
+
+on:
+  pull_request:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm, macos-15, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Verify source and build Python distributions
+        run: |
+          python -m pip install ".[dev]"
+          ruff check .
+          python -m unittest -v
+          python -m compileall -q camp_leverage_all.py
+          python -m build
+      - name: Build and test Linux archive through Festival
+        if: runner.os == 'Linux'
+        run: |
+          docker build --build-arg GITHUB_SHA="$GITHUB_SHA" -f tests/release/Dockerfile -t release-test .
+          docker run --rm --network none release-test
+          docker build --build-arg GITHUB_SHA="$GITHUB_SHA" -f tests/release/Dockerfile --target export --output type=local,dest=dist/release .
+          docker build -f tests/integration/Dockerfile -t integration-test .
+          docker run --rm --network none integration-test
+          docker run --rm --network none --entrypoint python integration-test /app/tests/terminal/render_pty.py
+      - uses: actions/setup-go@v6
+        if: runner.os == 'macOS'
+        with:
+          go-version: "1.25.x"
+          cache: false
+      - name: Build macOS archive with bundled Python and scc
+        if: runner.os == 'macOS'
+        run: |
+          brew install --skip-link python@3.11
+          "$(brew --prefix python@3.11)/bin/python3.11" -m venv build/release-venv
+          build/release-venv/bin/python -m pip install -r scripts/release/requirements.txt
+          bash scripts/release/build-scc.sh
+          build/release-venv/bin/python scripts/release/build.py
+          build/release-package/camp-leverage-all --help
+      - name: Validate archive and tag versions
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          python - <<'PY'
+          import os, pathlib, tarfile, tomllib
+          version = tomllib.loads(pathlib.Path("pyproject.toml").read_text())["project"]["version"]
+          if os.environ["REF_TYPE"] == "tag":
+              assert os.environ["REF_NAME"] == f"v{version}", "tag/version mismatch"
+          for archive in pathlib.Path("dist/release").glob("*.tar.gz"):
+              assert archive.name.startswith(f"camp-leverage-all-{version}-")
+              with tarfile.open(archive) as package:
+                  assert package.getmember("camp-leverage-all").mode & 0o111
+          PY
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-${{ matrix.runner }}
+          path: dist/release/*
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        if: matrix.runner == 'ubuntu-24.04'
+        with:
+          name: python-distributions
+          path: |
+            dist/*.whl
+            dist/camp_leverage_all-*.tar.gz
+
+  publish:
+    if: github.ref_type == 'tag'
+    needs: package
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Verify all four archives and publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          cd artifacts
+          test "$(find . -maxdepth 1 -name '*.tar.gz.sha256' | wc -l)" -eq 4
+          cat ./*.tar.gz.sha256 | sort > checksums.txt
+          sha256sum --check checksums.txt
+          gh release create "$RELEASE_TAG" --verify-tag --title "Camp Leverage All $RELEASE_TAG" --notes-file "../docs/releases/${RELEASE_TAG#v}.md" ./*.tar.gz ./*.whl checksums.txt

@@ -1,0 +1,2 @@
+# Build-only dependencies; the installed plugin has no Python package dependencies.
+pyinstaller==6.22.3

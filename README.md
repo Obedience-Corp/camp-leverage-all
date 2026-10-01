@@ -9,28 +9,27 @@
 </p>
 
 <p align="center">
-  <a href="https://gist.github.com/lancekrogers/2b93401425db6daaeba3b6f36849a9bf"><img src="https://gist.githubusercontent.com/lancekrogers/2b93401425db6daaeba3b6f36849a9bf/raw/camp-leverage-all-terminal.gif" width="960" alt="Camp Leverage All terminal report showing a deduplicated score, contribution metrics, timeline, repositories, and identities"></a>
+  <a href="https://gist.github.com/lancekrogers/aef8af6ab81b974660c262d80326eeeb"><img src="https://gist.githubusercontent.com/lancekrogers/aef8af6ab81b974660c262d80326eeeb/raw/camp-leverage-all-030.gif" width="960" alt="Camp Leverage All terminal report showing COCOMO effort and dollars in the headline, timeline, and repository breakdown"></a>
 </p>
 
-<p align="center"><em>Recorded from the real CLI with two sanitized Camps; the shared repository is counted once and the cumulative timeline ends at the headline score.</em></p>
+<p align="center"><em>Recorded from the real CLI with two sanitized Camps; the shared repository is counted once and the cumulative timeline ends at the headline score and dollar total.</em></p>
 
-Camp Leverage All is an experimental Python plugin for Camp. It discovers registered Camps and projects, joins your configured Git identities, and calculates one personal leverage score without counting the same repository or worktree twice.
+Camp Leverage All is an experimental Python plugin for Camp. It discovers registered Camps and projects, joins your configured Git identities, and calculates one personal leverage score with each repository counted once across checkouts and worktrees.
 
 | Deduplicated | Identity-aware | Time-aware |
 | --- | --- | --- |
 | One remote contributes once across every Camp and checkout. | Personal, work, bot, and agent emails can resolve into one author set. | The report shows period output, period rate, and cumulative leverage through time. |
 
-The exact result depends on your repositories and author identities. Camp Leverage All is read-only: it does not modify Git history, Camp configuration, or project files.
+The exact result depends on your repositories and author identities. Camp Leverage All reads Git history, Camp configuration, and project files to produce its report.
 
 > **Status:** Camp Leverage All is pre-1.0 software. Its calculation contract is documented, but its command and output schemas may evolve before 1.0.
 
 ## Quick start
 
-Camp Leverage All depends on the `camp` binary from [Festival](https://github.com/Obedience-Corp/festival), plus `git`, `scc` 3.7 or newer, and Python 3.11 or newer. On macOS, install Festival and `scc` first:
+Install [Festival](https://github.com/Obedience-Corp/festival) first; it supplies Camp and the plugin installer. Release archives bundle Python and `scc` 3.7. Git must be available on `PATH`. On macOS:
 
 ```sh
 brew install --cask Obedience-Corp/tap/festival
-brew install scc
 festival doctor
 ```
 
@@ -49,11 +48,11 @@ camp leverage-all
 
 ![Festival TUI installs Camp Leverage All from a local preview catalog, then Camp reports version 0.2.0](https://gist.githubusercontent.com/lancekrogers/c4312b72b97d06f9c07ab8bd8bd4d767/raw/camp-leverage-all-festival-install-preview.gif)
 
-*Installation preview recorded with the real Festival TUI and a disposable local catalog. The visible unsigned-content warnings belong to that fixture. The official marketplace release is pending; this recording does not verify its availability or signatures.*
+*Installation preview recorded with the real Festival TUI and a disposable local catalog. The visible unsigned-content warnings belong to that fixture. The official marketplace release is pending; the official catalog and its signatures will be verified before launch.*
 
-That first report scans every registered Camp, combines your configured Git identities, and counts each repository once. **The timeline table is included by default; no extra flag is needed.** It shows estimated period rates and a cumulative average. See [Reading the timeline](#reading-the-timeline) for the column definitions and how those estimates are calculated.
+That first report scans every registered Camp, combines your configured Git identities, and counts each repository once. **COCOMO effort and dollars appear by default in the headline, timeline, and repository breakdown.** It shows estimated period rates and a cumulative average. See [Reading the timeline](#reading-the-timeline) for the column definitions and how those estimates are calculated.
 
-Festival supplies the Camp registry and discovers the plugin executable on `PATH`. The plugin remains a separate, read-only Python program; Camp does not import it.
+Festival supplies the Camp registry and discovers the plugin executable on `PATH`. Camp launches the plugin as a separate, read-only program.
 
 | Command | Scope | State |
 | --- | --- | --- |
@@ -62,11 +61,23 @@ Festival supplies the Camp registry and discovers the plugin executable on `PATH
 
 The package installs the `camp-leverage-all` executable. Camp's plugin dispatcher exposes it as `camp leverage-all`, keeping it distinct from the native `camp leverage` command.
 
-For npm, pnpm, bun, Linux packages, or release archives, install Festival using its [installation guide](https://github.com/Obedience-Corp/festival#install), then install `scc` separately. Festival's [navigation guide](https://github.com/Obedience-Corp/festival#navigation) explains optional shell commands such as `cgo`.
+For npm, pnpm, bun, Linux packages, or release archives, install Festival using its [installation guide](https://github.com/Obedience-Corp/festival#install), then choose the plugin in the Festival catalog once its listing is available. Festival's [navigation guide](https://github.com/Obedience-Corp/festival#navigation) explains optional shell commands such as `cgo`.
+
+### Install the tagged release today
+
+While the official catalog listing is pending, users with repository access can install version `0.3.0` with [`uv`](https://docs.astral.sh/uv/getting-started/installation/). This source installation uses Python 3.11+ and `scc` 3.7+ from your machine:
+
+```sh
+brew install scc  # macOS; use your package manager on Linux
+uv tool install --force git+ssh://git@github.com/Obedience-Corp/camp-leverage-all.git@v0.3.0
+camp leverage-all
+```
+
+Use the same command to replace an older installation with this release. The repository is currently private; public availability and the signed Festival listing are tracked in [RELEASING.md](RELEASING.md).
 
 ## Who it works for
 
-Camp Leverage All works for any Festival user with one or more Camps registered on the machine. It has no built-in author names, email addresses, Camp names, or filesystem paths.
+Camp Leverage All works for any Festival user with one or more Camps registered on the machine. It discovers identities and projects from your own Git and Camp configuration.
 
 By default, it starts with `git config user.email`. If a Camp has `.campaign/leverage/authors.json`, matching identity groups expand that email to the user's other personal, work, bot, or agent addresses. Users without an author file still get a report for their configured Git email. The repeatable `--author-email` and `--author-name` options cover additional identities without changing Camp state.
 
@@ -124,13 +135,13 @@ The report includes these measures of your work:
 
 - **Current ownership:** lines currently attributed to your email addresses by `git blame`, plus your proportional share of `scc`'s current code count and COCOMO estimate.
 - **Lifetime production:** commits and textual lines added or deleted by those email addresses across all branches.
-- **Estimated COCOMO cost (USD):** the sum of each unique repository’s `scc` cost estimate, scaled to your share of current ownership. The headline and timeline include this dollar estimate.
+- **Estimated COCOMO cost (USD):** the sum of each unique repository’s `scc` cost estimate, scaled to your share of current ownership. The headline, timeline, and repository breakdown include this dollar estimate.
 - **Full leverage:** your share of COCOMO-estimated project effort divided by the calendar span between your first and last matching commits.
 - **Timeline:** the same current, deduplicated personal effort allocated to periods according to authored textual lines added, with commits used when a repository has no textual additions. Each row shows that period's allocated output and rate plus the cumulative rate through that period.
 
 Repository identities come from normalized Git remotes. SSH aliases, SSH URLs, and HTTPS URLs for the same remote collapse to one repository. Camp worktree directories are excluded, and duplicate checkouts report all of their Camp memberships. See [SPEC.md](SPEC.md) for the complete selection and calculation rules.
 
-This is a comparative engineering metric for personal tracking. It is not a valuation, a productivity target, or a measure of hours worked.
+Use this comparative engineering metric to track estimated development effort alongside your actual code contributions and calendar span.
 
 ### Estimated dollar cost
 
@@ -142,7 +153,7 @@ Defaults match `scc`: **$56,286 annual wage and 2.4× overhead**. Both assumptio
 camp leverage-all --annual-wage 120000 --overhead 2.4
 ```
 
-The plugin reads `scc.estimatedCost` directly and multiplies it by your ownership share. `scc` 3.7 computes cost as estimated person-months × truncated monthly wage × overhead; its default monthly wage is $4,690. This is a model estimate of development cost, not revenue, market value, or actual money spent. Changing wage or overhead changes dollars without changing leverage, LOC, or author ownership.
+The plugin reads `scc.estimatedCost` directly and multiplies it by your ownership share. `scc` 3.7 computes cost as estimated person-months × truncated monthly wage × overhead; its default monthly wage is $4,690. The dollar figure represents modeled development cost under the displayed wage and overhead assumptions. Changing wage or overhead changes dollars without changing leverage, LOC, or author ownership.
 
 JSON records the assumptions in `cost_model`, the total in `summary.estimated_cost_usd`, and each repository’s personal and whole-repo estimates in `estimated_cost_usd` and `unscaled_estimated_cost_usd`. Values retain full precision in JSON; terminal dollars are rounded for display.
 
@@ -157,7 +168,7 @@ For example, using illustrative values:
 | One recent Camp | 600 person-months | 12 months | 50× |
 | All Camps, including older repos | 900 person-months | 36 months | 25× |
 
-The combined scope has more estimated output, but averages it over three times as long. A lower score therefore does not mean less total output. Camp scores with different date spans are not directly comparable; comparisons also need consistent author and repository scope and calculation rules. Summing individual Camp scores would count shared repositories and overlapping work more than once.
+The combined scope has more estimated output, but averages it over three times as long. Total output rises while the lifetime average falls. Compare Camp scores over consistent date spans, authors, repository scopes, and calculation rules. Summing individual Camp scores would count shared repositories and overlapping work more than once.
 
 ### Reading the timeline
 
@@ -177,9 +188,9 @@ On narrower terminals, period and cumulative dollars appear on a second line for
 
 Use `RATE` to compare the estimated pace between periods. `CUMULATIVE` includes the earlier history, so a recent period can have a high rate while the cumulative average stays much lower. First and last periods cover only the portion within the matching commit span; durations use a minimum of 0.1 month. Period boundaries are in UTC.
 
-**These are allocated estimates, not measured historical scores.** For each repository, the tool distributes today's author-owned COCOMO effort and cost among periods in proportion to the selected authors' textual lines added. It uses commit counts when that repository has no textual additions. It does not check out historical versions or recompute past code size and ownership. Consequently, changes to today's code or ownership can change earlier timeline estimates on a later run.
+**The timeline allocates today’s code estimate across your commit history.** For each repository, the tool distributes today's author-owned COCOMO effort and cost among periods in proportion to the selected authors' textual lines added. It uses commit counts when that repository has no textual additions. Because the allocation uses current code size and ownership, changes to today’s code can change earlier timeline estimates on a later run.
 
-Historical scores would require reconstructing and measuring repository snapshots at each period boundary. That mode is not implemented. JSON makes the current method explicit with `historical_snapshot: false`.
+Measuring historical snapshots would require reconstructing each repository at every period boundary. The current allocation method is identified in JSON with `historical_snapshot: false`.
 
 ## Output and exit status
 
@@ -202,9 +213,9 @@ Source installation is for contributors. From a clone, install an editable copy 
 uv tool install --editable .
 ```
 
-This installs the `camp-leverage-all` executable for development. Users should install the published plugin through the Festival TUI above.
+This installs the `camp-leverage-all` executable for development. For a tagged installation, follow the quick start above.
 
-From a Camp workspace, `cgo leverage-all` navigates to this project; it does not calculate a report. Then run:
+From a Camp workspace, `cgo leverage-all` navigates to this project. Run `camp leverage-all` to calculate a report. To verify development changes:
 
 ```sh
 python3 -m unittest -v
