@@ -37,14 +37,14 @@ Install the plugin through the **Festival TUI**:
 
 1. Run `festival` to open the TUI.
 2. Open **Browse catalog** and select `obedience-corp/camp-leverage-all`.
-3. Press **Enter** to install it. When the result screen appears, press **Enter** to return home; **Installed packages** lists `obedience-corp/camp-leverage-all 0.3.0`.
+3. Press **Enter** to install it and wait for **Install complete**.
 4. Quit Festival and run the plugin through Camp:
 
 ```sh
 camp leverage-all
 ```
 
-![Festival TUI installs Camp Leverage All from the signed official marketplace, then camp leverage-all reports version 0.3.0](https://gist.githubusercontent.com/lancekrogers/53a3f2955c0af0aaeb119256c86dc05d/raw/camp-leverage-all-festival-install-official.gif)
+![Festival TUI installs Camp Leverage All from the signed official marketplace, then camp leverage-all reports version 0.3.0](https://gist.githubusercontent.com/lancekrogers/91dc8a7c642a9e1f91e2d6957a0952e9/raw/camp-leverage-all-festival-install-official-v0317.gif)
 
 *Recorded with the released Festival TUI in a fresh home against the signed official marketplace; the catalog entry and its signature are verified by the key built into Festival.*
 
