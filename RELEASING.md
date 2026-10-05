@@ -25,7 +25,7 @@ The supported user installation path is the Festival TUI: **Browse catalog**, se
 - [x] Verify bundled Python and `scc`, external Git/Camp requirements, and packaged execution on supported systems (macOS arm64 host; Linux arm64 and x86_64 in Docker; missing-prerequisite error path in the release test).
 - [x] Add the plugin to the official marketplace through its metadata-signing PR workflow (marketplace PR #29, merged 2026-10-05).
 - [x] Verify the signed official catalog in a fresh Festival home: TUI installation, saved receipt, and `camp leverage-all --version` (festival v0.3.16 on macOS arm64 and Linux arm64/x86_64; `official-obey` reported `verified: true`).
-- [x] Replace the README's local-catalog preview with a VHS recording of the official marketplace install, then remove the release-pending notice. Re-record once a Festival release summarizes the install result instead of listing every receipt file.
+- [x] Replace the README's local-catalog preview with a VHS recording of the official marketplace install, then remove the release-pending notice. Recorded against Festival v0.3.17.
 
 The local-catalog walkthrough proves the TUI can install the plugin archive and Camp can dispatch it. Its unsigned fixture is deliberately labeled as a preview; it does not establish public release availability or official metadata trust.
 
