@@ -37,7 +37,7 @@ jobs:
           docker build -f tests/integration/Dockerfile -t integration-test .
           docker run --rm --network none integration-test
           docker run --rm --network none --entrypoint python integration-test /app/tests/terminal/render_pty.py
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         if: runner.os == 'macOS'
         with:
           go-version: "1.25.x"
