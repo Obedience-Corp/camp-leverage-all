@@ -35,8 +35,6 @@ festival doctor
 
 Install the plugin through the **Festival TUI**:
 
-> The first marketplace release is being prepared. These steps apply once Camp Leverage All appears in the official catalog.
-
 1. Run `festival` to open the TUI.
 2. Open **Browse catalog** and select `obedience-corp/camp-leverage-all`.
 3. Press **Enter** to install it and wait for **Install complete**.
@@ -46,9 +44,9 @@ Install the plugin through the **Festival TUI**:
 camp leverage-all
 ```
 
-![Festival TUI installs Camp Leverage All from a local preview catalog, then Camp reports version 0.2.0](https://gist.githubusercontent.com/lancekrogers/c4312b72b97d06f9c07ab8bd8bd4d767/raw/camp-leverage-all-festival-install-preview.gif)
+![Festival TUI installs Camp Leverage All from the signed official marketplace, then camp leverage-all reports version 0.3.0](https://gist.githubusercontent.com/lancekrogers/53a3f2955c0af0aaeb119256c86dc05d/raw/camp-leverage-all-festival-install-official.gif)
 
-*Installation preview recorded with the real Festival TUI and a disposable local catalog. The visible unsigned-content warnings belong to that fixture. The official marketplace release is pending; the official catalog and its signatures will be verified before launch.*
+*Recorded with the released Festival TUI in a fresh home against the signed official marketplace; the catalog entry and its signature are verified by the key built into Festival.*
 
 That first report scans every registered Camp, combines your configured Git identities, and counts each repository once. **COCOMO effort and dollars appear by default in the headline, timeline, and repository breakdown.** It shows estimated period rates and a cumulative average. See [Reading the timeline](#reading-the-timeline) for the column definitions and how those estimates are calculated.
 
@@ -61,19 +59,19 @@ Festival supplies the Camp registry and discovers the plugin executable on `PATH
 
 The package installs the `camp-leverage-all` executable. Camp's plugin dispatcher exposes it as `camp leverage-all`, keeping it distinct from the native `camp leverage` command.
 
-For npm, pnpm, bun, Linux packages, or release archives, install Festival using its [installation guide](https://github.com/Obedience-Corp/festival#install), then choose the plugin in the Festival catalog once its listing is available. Festival's [navigation guide](https://github.com/Obedience-Corp/festival#navigation) explains optional shell commands such as `cgo`.
+For npm, pnpm, bun, Linux packages, or release archives, install Festival using its [installation guide](https://github.com/Obedience-Corp/festival#install), then choose the plugin in the Festival catalog. Festival's [navigation guide](https://github.com/Obedience-Corp/festival#navigation) explains optional shell commands such as `cgo`.
 
-### Install the tagged release today
+### Install from source
 
-While the official catalog listing is pending, users with repository access can install version `0.3.0` with [`uv`](https://docs.astral.sh/uv/getting-started/installation/). This source installation uses Python 3.11+ and `scc` 3.7+ from your machine:
+If you prefer not to use the Festival catalog, install version `0.3.0` with [`uv`](https://docs.astral.sh/uv/getting-started/installation/). This source installation uses Python 3.11+ and `scc` 3.7+ from your machine:
 
 ```sh
 brew install scc  # macOS; use your package manager on Linux
-uv tool install --force git+ssh://git@github.com/Obedience-Corp/camp-leverage-all.git@v0.3.0
+uv tool install --force git+https://github.com/Obedience-Corp/camp-leverage-all.git@v0.3.0
 camp leverage-all
 ```
 
-Use the same command to replace an older installation with this release. The repository is currently private; public availability and the signed Festival listing are tracked in [RELEASING.md](RELEASING.md).
+Use the same command to replace an older installation with this release. Release and marketplace steps are tracked in [RELEASING.md](RELEASING.md).
 
 ## Who it works for
 

@@ -22,10 +22,10 @@ The containerized fixture proves repository discovery, Git history, `scc`, packa
 The supported user installation path is the Festival TUI: **Browse catalog**, select `obedience-corp/camp-leverage-all`, and install. A Python wheel or source-install command alone does not make this path available.
 
 - [x] Publish versioned release archives with an executable `camp-leverage-all` and SHA-256 checksums for each supported platform (`v0.3.0`).
-- [ ] Verify bundled Python and `scc`, external Git/Camp requirements, and packaged execution on supported systems.
-- [x] Add the plugin to the official marketplace through its metadata-signing PR workflow (marketplace PR opened; signing and merge pending).
-- [ ] Verify the signed official catalog in a fresh Festival home: TUI installation, saved receipt, and `camp leverage-all --version`.
-- [ ] Replace the README's local-catalog preview with a VHS recording of the official marketplace install, then remove the release-pending notice.
+- [x] Verify bundled Python and `scc`, external Git/Camp requirements, and packaged execution on supported systems (macOS arm64 host; Linux arm64 and x86_64 in Docker; missing-prerequisite error path in the release test).
+- [x] Add the plugin to the official marketplace through its metadata-signing PR workflow (marketplace PR #29, merged 2026-10-05).
+- [x] Verify the signed official catalog in a fresh Festival home: TUI installation, saved receipt, and `camp leverage-all --version` (festival v0.3.16 on macOS arm64 and Linux arm64/x86_64; `official-obey` reported `verified: true`).
+- [x] Replace the README's local-catalog preview with a VHS recording of the official marketplace install, then remove the release-pending notice. Re-record once a Festival release summarizes the install result instead of listing every receipt file.
 
 The local-catalog walkthrough proves the TUI can install the plugin archive and Camp can dispatch it. Its unsigned fixture is deliberately labeled as a preview; it does not establish public release availability or official metadata trust.
 
