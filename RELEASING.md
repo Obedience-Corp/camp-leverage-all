@@ -11,7 +11,7 @@ The repository can be made public after all checks below pass:
 - [x] A containerized integration fixture verifies that two Camps sharing one remote score it once.
 - [x] Public fixtures and runtime defaults contain no user-specific author, Camp, or filesystem assumptions.
 - [x] Timeline output identifies its allocation method, explains its current-code allocation, and ends at the headline score.
-- [ ] Change repository visibility, then enable GitHub private vulnerability reporting before announcing it.
+- [x] Change repository visibility, then enable GitHub private vulnerability reporting before announcing it.
 - [x] The tracked files contain no machine-specific paths, private Camp names, or real author addresses.
 - [x] Version `0.3.0` supports source installation for contributors; PyPI publishing is deferred.
 
@@ -21,9 +21,9 @@ The containerized fixture proves repository discovery, Git history, `scc`, packa
 
 The supported user installation path is the Festival TUI: **Browse catalog**, select `obedience-corp/camp-leverage-all`, and install. A Python wheel or source-install command alone does not make this path available.
 
-- [ ] Publish versioned release archives with an executable `camp-leverage-all` and SHA-256 checksums for each supported platform.
+- [x] Publish versioned release archives with an executable `camp-leverage-all` and SHA-256 checksums for each supported platform (`v0.3.0`).
 - [ ] Verify bundled Python and `scc`, external Git/Camp requirements, and packaged execution on supported systems.
-- [ ] Add the plugin to the official marketplace through its metadata-signing PR workflow.
+- [x] Add the plugin to the official marketplace through its metadata-signing PR workflow (marketplace PR opened; signing and merge pending).
 - [ ] Verify the signed official catalog in a fresh Festival home: TUI installation, saved receipt, and `camp leverage-all --version`.
 - [ ] Replace the README's local-catalog preview with a VHS recording of the official marketplace install, then remove the release-pending notice.
 
